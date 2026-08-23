@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "air-llm"
+version = "0.1.0"
+description = "Central LLM gateway for the AIR platform: unified inference API, provider routing/failover, cost accounting, and observability — reached directly by every consumer in every environment."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "AIR Platform Team" }]
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "structlog>=24.1",
+    "prometheus-client>=0.20",
+]
+
+[project.optional-dependencies]
+# Cloud model providers — Ollama needs no SDK (plain HTTP).
+providers = [
+    "anthropic>=0.39",
+    "openai>=1.40",
+    "google-genai>=1.0",
+]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "anyio>=4.4",
+    "types-pyyaml>=6.0",
+]
+
+[project.urls]
+Repository = "https://github.com/air/air-llm"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/air_llm", "client/air_llm_client"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "client", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "B008",   # FastAPI Depends() / Header() in defaults is idiomatic
+    "N818",   # HTTP-status exceptions use conventional names (Unauthorized, Forbidden, …)
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src:client"
+disallow_untyped_defs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["anthropic.*", "openai.*", "google.genai.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src", "client"]

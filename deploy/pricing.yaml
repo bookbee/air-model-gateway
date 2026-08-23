@@ -1,0 +1,59 @@
+# Model price table, USD per MILLION tokens — the unit providers publish, so a
+# rate can be copied from a pricing page without arithmetic.
+#
+# Loaded by air_llm.gateway.cost at boot. DevOps-owned: provider price changes
+# land here, not in a release. A model absent from this table prices at 0.0 and
+# is reported through the `air_llm_model_unpriced_total` counter, so an
+# unpriced model shows up as a metric rather than as silently free spend.
+#
+# Use LIST prices, not promotional or negotiated ones. An over-estimate only ever
+# stops a consumer's cost ceiling early; an under-estimate overspends silently.
+
+# Cache token rates follow each provider's published ratio against the input rate:
+# a cache read bills ~10% of input, a 1-hour cache write ~2x.
+cache_read_ratio: 0.1
+cache_write_ratio: 2.0
+
+# Locally served models cost electricity, not tokens. Pricing them against a
+# caller's budget would suppress the cheap rung the escalation ladder is built
+# around, so anything served by ollama — or matching a prefix here, for a local
+# model served through an OpenAI-compatible shim — prices at zero.
+local_prefixes: [llama, qwen, mistral, ministral, mixtral, gemma, phi, deepseek]
+
+models:
+  claude-haiku-4-5:
+    input: 1.00
+    output: 5.00
+  claude-sonnet-5:
+    input: 3.00
+    output: 15.00
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
+  gpt-4.1-mini:
+    input: 0.40
+    output: 1.60
+  gpt-4.1:
+    input: 2.00
+    output: 8.00
+
+  # Gemini bills thinking tokens at the output rate; the adapter folds them into
+  # completion_tokens, so no separate row is needed for them.
+  gemini-2.5-flash:
+    input: 0.30
+    output: 2.50
+  gemini-2.5-pro:
+    input: 1.25
+    output: 10.00
+
+  # Embedding models bill input only; `output` stays 0 so a stray completion
+  # count cannot invent a charge that the provider would never raise.
+  text-embedding-3-small:
+    input: 0.02
+    output: 0.00
+  text-embedding-3-large:
+    input: 0.13
+    output: 0.00
+  gemini-embedding-001:
+    input: 0.15
+    output: 0.00

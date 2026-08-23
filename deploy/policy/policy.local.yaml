@@ -1,0 +1,26 @@
+# Local policy: who can call air-llm and how fast.
+# Loaded by air_llm.policy.engine at boot. Prod policy is the same shape but
+# sourced from the secret/config backend and is enforced strictly (no default-allow).
+#
+# A rule grants a service a set of actions on a resource, with an optional
+# per-minute rate override. `default_allow: true` is a LOCAL convenience only.
+# air-llm has exactly one resource — `inference` — since it hosts nothing else.
+
+default_allow: true
+default_rate_per_minute: 120
+
+services:
+  air-classifier:
+    resources:
+      inference: [chat, embeddings]  # escalation ladder T2/T3
+    rate_per_minute: 300
+
+  air-platform:
+    resources:
+      inference: [chat, embeddings]
+    rate_per_minute: 600
+
+  air-client:
+    resources:
+      inference: [chat]
+    rate_per_minute: 60

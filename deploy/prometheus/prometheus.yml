@@ -1,0 +1,15 @@
+# air-llm's own Prometheus, scraping only itself. Unlike air-infra's platform-wide
+# Prometheus (which every AIR service registers a job in), air-llm is a standalone
+# production service and ships its own scrape config rather than depending on a
+# stack that never reaches production (docs/00-plan.md §1).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: air-llm
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["air-llm:8080"]
+        labels:
+          service: air-llm

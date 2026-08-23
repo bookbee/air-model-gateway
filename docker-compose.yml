@@ -1,0 +1,87 @@
+# air-llm local stack. Standalone by design: no dependency on air-infra's
+# compose stack, since air-infra never runs in production and air-llm must work
+# the same way in every environment (docs/00-plan.md §1, §4).
+#
+#   base:                    air-llm
+#   --profile ollama:        ollama (see OLLAMA=container|native in the Makefile)
+#   --profile observability: prometheus
+#
+# Host port 8083: the next free slot in the AIR service port block
+# (air-infra/README.md's port map — 8080 air-infra, 8081 air-platform,
+# 8082 air-classifier). air-llm's own port is tracked in README.md here.
+name: air-llm
+
+x-restart: &restart
+  restart: unless-stopped
+
+# Reaches the developer's laptop from inside a container — needed when OLLAMA=native
+# points air-llm at an ollama running on the host rather than the container below.
+x-host-access: &host-access
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  air-llm:
+    <<: [*restart, *host-access]
+    build: .
+    env_file: [.env]
+    environment:
+      AIR_LLM_ENVIRONMENT: local
+      # Overrides .env — `environment:` wins over `env_file:`. The Makefile sets
+      # AIR_LLM_OLLAMA_URL from OLLAMA=container|native, so this follows whichever
+      # ollama is actually serving.
+      AIR_LLM_OLLAMA__BASE_URL: ${AIR_LLM_OLLAMA_URL:-http://ollama:11434}
+      # Self-hosted backends (llama.cpp, LM Studio, vLLM, ...) always run on
+      # the host, not as a service in this compose file — there is no
+      # containerised option the way Ollama has one, so this always goes
+      # through host-gateway. Port 8181: llama-server (`make llamacpp-up`).
+      AIR_LLM_SELF_HOSTED__BASE_URL: http://host.docker.internal:8181/v1
+    ports: ["8083:8080"]
+    networks:
+      default:
+        aliases: ["air-llm"]
+    # No depends_on for ollama: it is profile-gated and legitimately absent in
+    # native mode. An unreachable provider is reported through /v1/capabilities
+    # and /v1/ready rather than refusing to boot.
+
+  # ---- inference (profile: ollama) ------------------------------------------
+  # Same container/native choice air-infra's Makefile offers for its own local
+  # ollama — the two are independent copies, not a shared dependency.
+  #
+  # Version pinned deliberately, not left on a floating tag: air-llm's default
+  # routing alias ("fast") targets llama3.2:3b, and a floating tag would move
+  # that runtime's behaviour out from under it without a corresponding change here.
+  ollama:
+    <<: *restart
+    image: ollama/ollama:0.13.0
+    profiles: ["ollama"]
+    volumes:
+      - ollama-data:/root/.ollama
+    ports: ["11434:11434"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ---- observability (profile: observability) -------------------------------
+  prometheus:
+    <<: *host-access
+    image: prom/prometheus:v3.0.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["9090:9090"]
+
+volumes:
+  ollama-data:
+  prometheus-data:
+
+networks:
+  default:
+    name: air-llm-net
