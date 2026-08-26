@@ -99,6 +99,26 @@ aliases:
     - provider: openai
       model: gpt-4o-mini
 
+  # air-platform's answer-synthesis call (`engine/turn.py`'s `TurnEngine`,
+  # Phase 2a) — customer- and business-channel prose, plus the
+  # schema-constrained business-channel `structured` call. Its own alias
+  # rather than pointed at `smart` directly, same reasoning as
+  # classify-arbiter above: a future change to `smart` for a different
+  # consumer must not silently change what a customer-facing answer sounds
+  # like. Leads with `gemini-2.5-flash` rather than `smart`'s `-pro`: `-pro`
+  # is deprecated in this environment as of this writing (confirmed via a
+  # direct `/v1/inference` call — "no longer available to new users"), while
+  # `-flash` is the model `classify-default` already proves working here.
+  # Revisit once `smart`'s own chain is updated, or once Anthropic/OpenAI
+  # keys make the vendor ordering matter less.
+  generative:
+    - provider: gemini
+      model: gemini-2.5-flash
+    - provider: anthropic
+      model: claude-sonnet-5
+    - provider: openai
+      model: gpt-4o-mini
+
   # No llama.cpp rung here: this local instance is loaded with a chat model,
   # not an embedding one — llama-server serves one or the other per
   # process/port, not both. Add one back (a second llama-server instance on
