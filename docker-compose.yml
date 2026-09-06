@@ -24,6 +24,11 @@ services:
   air-llm:
     <<: [*restart, *host-access]
     build: .
+    # Pinned explicitly, as every other AIR service does. Without it compose
+    # derives `<project>-<service>` and the name doubles to `air-llm-air-llm`.
+    # The `local` tag says "built from this checkout", so it cannot be confused
+    # with anything pulled from a registry.
+    image: air-llm:local
     env_file: [.env]
     environment:
       AIR_LLM_ENVIRONMENT: local
