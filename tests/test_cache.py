@@ -10,8 +10,8 @@ distinct prompts that are each asked once would grow the dict forever.
 
 from __future__ import annotations
 
-from air_llm.gateway.cache import ResponseCache
-from air_llm.schemas.models import ChatRequest, ChatResponse, Message, Usage
+from air_model_gateway.gateway.cache import ResponseCache
+from air_model_gateway.schemas.models import ChatRequest, ChatResponse, Message, Usage
 
 FLAT_SCHEMA = {"type": "object", "properties": {"label": {"type": "string"}}}
 OTHER_SCHEMA = {"type": "object", "properties": {"verdict": {"type": "string"}}}

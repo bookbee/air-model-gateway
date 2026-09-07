@@ -1,4 +1,4 @@
-# air-llm
+# air-model-gateway
 
 A gateway that isolates AI applications from rapidly changing LLM APIs. Provides a unified interface, chain-based failover, cost tracking, and observability across OpenAI, Anthropic, Gemini, Ollama, and any OpenAI-wire-compatible self-hosted backend (LM Studio, vLLM, TGI). Designed for enterprise workloads requiring vendor independence, reliability, and auditability.
 
@@ -10,7 +10,7 @@ LLM providers frequently change:
 - Model availability and SLAs
 - Error codes and retry semantics
 
-Embedding provider-specific logic directly into application code creates tight coupling and makes provider switches expensive and risky. This project implements the **air-llm** gateway pattern to decouple application logic from volatile LLM provider SDKs and APIs.
+Embedding provider-specific logic directly into application code creates tight coupling and makes provider switches expensive and risky. This project implements the **air-model-gateway** pattern to decouple application logic from volatile LLM provider SDKs and APIs.
 
 ## Key Capabilities
 
@@ -25,9 +25,9 @@ Ideal for teams building multi-agent systems, RAG pipelines, or any AI applicati
 
 ## Relationship to `air-infra`
 
-`air-llm` extracts and replaces the model gateway currently embedded in `air-infra`
+`air-model-gateway` extracts and replaces the model gateway currently embedded in `air-infra`
 (`src/air_infra/gateway/`). `air-infra` is scoped to local-development convenience only
-(Redis/Postgres/Mongo/Ollama containers) and is never promoted to production; `air-llm`
+(Redis/Postgres/Mongo/Ollama containers) and is never promoted to production; `air-model-gateway`
 is the standalone, independently-deployed service that actually serves model traffic in
 every environment, reached directly by consumers — never through `air-infra`.
 

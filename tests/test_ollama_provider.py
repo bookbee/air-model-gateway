@@ -1,7 +1,7 @@
 """OllamaProvider's keep_alive behavior.
 
 Regression coverage for a gap flagged from outside this repo (an air-classifier
-session, integrating against air-llm): the adapter never sent keep_alive, so
+session, integrating against air-model-gateway): the adapter never sent keep_alive, so
 Ollama's own server default (5m) applied and every AIR service sharing that
 Ollama instance paid a reload cold-start on the next call past that window —
 undoing even a manual `make ollama-warm` the moment the first real request
@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from air_llm.gateway.providers.ollama_provider import OllamaProvider
-from air_llm.schemas.models import ChatRequest, EmbeddingsRequest, Message
+from air_model_gateway.gateway.providers.ollama_provider import OllamaProvider
+from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Message
 
 
 class _FakeResponse:

@@ -1,4 +1,4 @@
-"""Readiness gates on provider health. Unlike air-infra, air-llm has no separate
+"""Readiness gates on provider health. Unlike air-infra, air-model-gateway has no separate
 store-broker plane to keep decoupled — it is on the path for every model call,
 so "no provider answers" is the one condition that means this replica genuinely
 cannot serve (docs/01-hld.md §7)."""

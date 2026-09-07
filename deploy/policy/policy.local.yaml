@@ -1,10 +1,10 @@
-# Local policy: who can call air-llm and how fast.
-# Loaded by air_llm.policy.engine at boot. Prod policy is the same shape but
+# Local policy: who can call air-model-gateway and how fast.
+# Loaded by air_model_gateway.policy.engine at boot. Prod policy is the same shape but
 # sourced from the secret/config backend and is enforced strictly (no default-allow).
 #
 # A rule grants a service a set of actions on a resource, with an optional
 # per-minute rate override. `default_allow: true` is a LOCAL convenience only.
-# air-llm has exactly one resource — `inference` — since it hosts nothing else.
+# air-model-gateway has exactly one resource — `inference` — since it hosts nothing else.
 
 default_allow: true
 default_rate_per_minute: 120

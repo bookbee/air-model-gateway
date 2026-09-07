@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
-from air_llm.constants import Provider
-from air_llm.gateway.base import ProviderError, ProviderResult
-from air_llm.gateway.router import ModelRouter
-from air_llm.schemas.models import ChatRequest, EmbeddingsRequest, Message, Usage
+from air_model_gateway.constants import Provider
+from air_model_gateway.gateway.base import ProviderError, ProviderResult
+from air_model_gateway.gateway.router import ModelRouter
+from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Message, Usage
 
 
 class FakeProvider:

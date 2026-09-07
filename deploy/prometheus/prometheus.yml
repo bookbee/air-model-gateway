@@ -1,5 +1,5 @@
-# air-llm's own Prometheus, scraping only itself. Unlike air-infra's platform-wide
-# Prometheus (which every AIR service registers a job in), air-llm is a standalone
+# air-model-gateway's own Prometheus, scraping only itself. Unlike air-infra's platform-wide
+# Prometheus (which every AIR service registers a job in), air-model-gateway is a standalone
 # production service and ships its own scrape config rather than depending on a
 # stack that never reaches production (docs/00-plan.md §1).
 global:
@@ -7,9 +7,9 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: air-llm
+  - job_name: air-model-gateway
     metrics_path: /metrics
     static_configs:
-      - targets: ["air-llm:8080"]
+      - targets: ["air-model-gateway:8080"]
         labels:
-          service: air-llm
+          service: air-model-gateway

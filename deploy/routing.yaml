@@ -1,18 +1,18 @@
 # Model routing table: alias -> ordered failover chain.
 #
-# Loaded by air_llm.gateway.router at boot. This is DevOps-owned configuration,
+# Loaded by air_model_gateway.gateway.router at boot. This is DevOps-owned configuration,
 # not code: adding a model, reordering a chain, or pointing an alias at a new
-# provider is an edit here plus a restart, never a release of air-llm.
+# provider is an edit here plus a restart, never a release of air-model-gateway.
 #
 # A caller asks for an alias ("fast") and gets the first entry that answers; on a
 # provider error the router walks to the next. A caller may also bypass aliases
 # entirely with "provider:model" (e.g. "anthropic:claude-haiku-4-5").
 #
-# Every provider named here must be one air-llm knows how to build (ollama,
+# Every provider named here must be one air-model-gateway knows how to build (ollama,
 # anthropic, openai, gemini, llama.cpp). An unregistered provider is skipped
 # with a logged reason rather than failing the boot, so a chain stays useful
 # when only some keys are set. `llama.cpp` is the *label* for whatever's
-# behind the one self-hosted settings slot (AIR_LLM_SELF_HOSTED__BASE_URL) —
+# behind the one self-hosted settings slot (AIR_MODEL_GATEWAY_SELF_HOSTED__BASE_URL) —
 # today that's llama.cpp's `llama-server` (`make llamacpp-up`), any
 # OpenAI-wire-compatible backend works there (LM Studio proved that first;
 # vLLM/TGI are the real UAT/Prod candidates). If what's actually running in
@@ -48,7 +48,7 @@ aliases:
   # Tier 2: exactly one entry, deliberately no failover. air-classifier's own
   # ladder — not this alias — is what decides whether to reach for Tier 3
   # when the local rung cannot serve, and it can only make that call
-  # correctly if a local outage actually fails the call rather than air-llm
+  # correctly if a local outage actually fails the call rather than air-model-gateway
   # quietly answering from the cloud under the Tier-2 label.
   classify-local:
     - provider: ollama

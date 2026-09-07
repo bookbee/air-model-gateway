@@ -1,4 +1,4 @@
-# AIR LLM — High-Level Design
+# AIR Model Gateway — High-Level Design
 
 **Status:** Draft for review · **Companion docs:** [Plan](00-plan.md) · [LLD](02-lld.md)
 
@@ -9,11 +9,11 @@
 ```
    air-platform      air-classifier       air-client        (any future consumer)
         │                   │                   │                    │
-        └───────────────────┴── air_llm_client (SDK) ─────────────────┘
+        └───────────────────┴── air_model_gateway_client (SDK) ─────────────────┘
                               │ HTTPS + X-API-Key
                               ▼
                  ┌──────────────────────────────┐
-                 │            air-llm             │
+                 │            air-model-gateway             │
                  │  AuthN · Policy · Rate limit   │
                  │  Router · Cost · Cache · Audit │
                  └──┬─────────┬──────────┬───────┘
@@ -27,24 +27,24 @@
 
 `air-infra` does not appear in this diagram. It is a separate, local-development-only
 project (Redis/Postgres/Mongo/Ollama containers, `make up`) that is never promoted to
-production and carries no runtime relationship to `air-llm` — see
-[Plan §1](00-plan.md#1-problem-statement). Every consumer reaches `air-llm` the same way,
-in every environment: directly, over HTTPS, configured by `AIR_LLM_URL` /
-`AIR_LLM_TOKEN`.
+production and carries no runtime relationship to `air-model-gateway` — see
+[Plan §1](00-plan.md#1-problem-statement). Every consumer reaches `air-model-gateway` the same way,
+in every environment: directly, over HTTPS, configured by `AIR_MODEL_GATEWAY_URL` /
+`AIR_MODEL_GATEWAY_TOKEN`.
 
 ## 2. Architectural principles
 
-1. **On-path by necessity, not by default.** `air-llm` sits in front of every model call
+1. **On-path by necessity, not by default.** `air-model-gateway` sits in front of every model call
    because that is the only place routing, failover, cost attribution, and caching can
    happen — the same reasoning `air-infra` originally applied to justify a model gateway
-   at all. Nothing else about `air-llm` assumes it should be on-path; it just is, for
+   at all. Nothing else about `air-model-gateway` assumes it should be on-path; it just is, for
    models.
-2. **No hidden runtime dependency.** `air-llm` never assumes another AIR service is
+2. **No hidden runtime dependency.** `air-model-gateway` never assumes another AIR service is
    available to lean on. It owns its own authN, policy, rate limiting, secrets, and (from
-   Phase 5) its own Redis. A consumer that only has `AIR_LLM_URL` and a token gets a fully
+   Phase 5) its own Redis. A consumer that only has `AIR_MODEL_GATEWAY_URL` and a token gets a fully
    working client.
 3. **One image, many environments.** A single artifact selects behavior from
-   `AIR_LLM_ENVIRONMENT`. Local differs from prod only in which providers have keys set
+   `AIR_MODEL_GATEWAY_ENVIRONMENT`. Local differs from prod only in which providers have keys set
    and which secret/cache backend is wired in — never in code path.
 4. **Ported, not reinvented, where something already works.** The provider protocol,
    router, cost book, and cache are lifted from `air-infra`'s gateway essentially
@@ -68,7 +68,7 @@ in every environment: directly, over HTTPS, configured by `AIR_LLM_URL` /
 | **Cost book** | Prices token usage from a DevOps-owned table; unpriced models are a metric, not silent free spend. Ported from `air-infra`'s `gateway/cost.py` |
 | **Response cache** | TTL cache keyed on normalized request, bounded by size as well as TTL. In-memory v1, Redis-backed from Phase 5. Ported from `air-infra`'s `gateway/cache.py` |
 | **Observability** | Structured logs, Prometheus metrics, audit sink — same shape as `air-infra`'s, so shared runbooks/dashboards work across both projects |
-| **Client SDK** | `air_llm_client`: `chat()` / `embeddings()` against `air-llm`'s API, configured via `AIR_LLM_URL` / `AIR_LLM_TOKEN` |
+| **Client SDK** | `air_model_gateway_client`: `chat()` / `embeddings()` against `air-model-gateway`'s API, configured via `AIR_MODEL_GATEWAY_URL` / `AIR_MODEL_GATEWAY_TOKEN` |
 
 ## 4. Request flow
 
@@ -103,7 +103,7 @@ here, rather than in a fronting service.
 | Secrets | `.env` / file | Vault or cloud secrets manager |
 | Cache / rate-limit backing | In-memory | Redis (Phase 5), provisioned by DevOps like any other production dependency |
 | Policy | `default_allow` convenience | strict, no default-allow |
-| `air-infra` involvement | None required — `air-llm` runs standalone even locally | None. `air-infra` does not exist in this environment |
+| `air-infra` involvement | None required — `air-model-gateway` runs standalone even locally | None. `air-infra` does not exist in this environment |
 
 ## 6. Cross-cutting controls
 
@@ -129,4 +129,4 @@ here, rather than in a fronting service.
 | No provider is reachable at all | `/v1/ready` reports unavailable and returns 503, so the replica leaves rotation |
 | Policy backend unreachable | Fail **closed** in prod (deny), fail **open** in local (`default_allow`) |
 | Cache (Redis, Phase 5) down | Gateway degrades to no-cache, not to failure |
-| `air-infra` is down or absent | No effect. `air-llm` has no runtime dependency on it in any environment |
+| `air-infra` is down or absent | No effect. `air-model-gateway` has no runtime dependency on it in any environment |

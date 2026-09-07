@@ -1,14 +1,14 @@
 ---
-project: air-llm
+project: air-model-gateway
 tagline: Central LLM gateway for the AIR platform — one HTTP entry point for chat and embeddings across Ollama, Anthropic, OpenAI, Gemini, and any self-hosted OpenAI-compatible backend.
 status: Built and locally verified; not yet committed, not yet integrated by any consumer, not yet deployed
 last_updated: 2026-08-23
 companion_docs: [00-plan.md, 01-hld.md, 02-lld.md]
 ---
 
-# air-llm — Project Overview
+# air-model-gateway — Project Overview
 
-This document is the one-stop summary: what air-llm is for, how it's built, how to
+This document is the one-stop summary: what air-model-gateway is for, how it's built, how to
 demo it, and what's left to do. For the full design record — the decisions, the
 tradeoffs, the things that turned out to be wrong and were amended — see
 `00-plan.md` / `01-hld.md` / `02-lld.md` in this same folder. This file is the
@@ -31,7 +31,7 @@ responsibilities. Two decisions forced it out on its own:
    every model it serves shares one runtime. Development, QA, and production
    legitimately want *different* model choices, not one hardcoded default.
 
-air-llm is the answer to both: a standalone, independently-deployed gateway that
+air-model-gateway is the answer to both: a standalone, independently-deployed gateway that
 every AIR service reaches directly, in every environment, over one HTTP contract —
 never through air-infra.
 
@@ -40,14 +40,14 @@ never through air-infra.
 ```
    air-platform      air-classifier       air-client        (any future consumer)
         │                   │                   │                    │
-        └───────────────────┴── air_llm_client (SDK) ─────────────────┘
+        └───────────────────┴── air_model_gateway_client (SDK) ───────┘
                               │ HTTPS + X-API-Key
                               ▼
-                 ┌──────────────────────────────┐
-                 │            air-llm             │
-                 │  AuthN · Policy · Rate limit   │
-                 │  Router · Cost · Cache · Audit │
-                 └──┬─────────┬──────────┬───────┘
+                 ┌──────────────────────────────────┐
+                 │        air-model-gateway         │
+                 │   AuthN · Policy · Rate limit    │
+                 │  Router · Cost · Cache · Audit   │
+                 └──┬─────────┬──────────┬──────────┘
                     │         │          │
                 Ollama   llama.cpp    Anthropic · OpenAI · Gemini
                (local)   (local; any    (cloud, both environments)
@@ -67,7 +67,7 @@ never through air-infra.
   `embed`, and air-classifier's own `classify-local`/`classify-default`/
   `classify-arbiter`) is an ordered failover chain, edited without a code release.
 - **Own control plane**: authN (service tokens), RBAC policy, and rate limiting
-  all live in-process — air-llm assumes nothing else is running to front it.
+  all live in-process — air-model-gateway assumes nothing else is running to front it.
 - **No runtime dependency on air-infra, anywhere, ever** — this is the one design
   constraint everything else was built against.
 
@@ -80,8 +80,8 @@ The key decisions, and why, in one line each — full rationale is in `00-plan.m
   failover, and cost logic were already proven; a bug found there (see Gaps) was
   never actually correct even in the original.
 - **Direct connection, not a broker hop.** Because air-infra never reaches
-  production, it can't be the thing handing out air-llm endpoints/credentials —
-  every consumer is configured with `AIR_LLM_URL`/`AIR_LLM_TOKEN` directly,
+  production, it can't be the thing handing out air-model-gateway endpoints/credentials —
+  every consumer is configured with `AIR_MODEL_GATEWAY_URL`/`AIR_MODEL_GATEWAY_TOKEN` directly,
   identically in every environment.
 - **`llama.cpp` is a concrete name, not a category.** The self-hosted provider
   identity is named after whatever's actually configured (matching `ollama`),
@@ -106,13 +106,13 @@ The key decisions, and why, in one line each — full rationale is in `00-plan.m
 
 - **Stack**: Python 3.12, FastAPI, Pydantic v2, httpx, structlog, Prometheus
   client. `pyproject.toml` extras: `providers` (cloud SDKs), `dev` (ruff/mypy/pytest).
-- **Footprint**: 40 source files (`src/air_llm` + `client/air_llm_client`), 10 test
+- **Footprint**: 40 source files (`src/air_model_gateway` + `client/air_model_gateway_client`), 10 test
   files, 71 tests — all passing, ruff and mypy `--strict` both clean.
 - **Repo layout** (full detail in `02-lld.md` §1):
-  - `src/air_llm/gateway/` — the router, cost book, cache, and five provider adapters
-  - `src/air_llm/api/v1/inference.py` — the one endpoint
-  - `src/air_llm/policy/`, `security/` — the in-process control plane
-  - `client/air_llm_client/` — the consumer SDK
+  - `src/air_model_gateway/gateway/` — the router, cost book, cache, and five provider adapters
+  - `src/air_model_gateway/api/v1/inference.py` — the one endpoint
+  - `src/air_model_gateway/policy/`, `security/` — the in-process control plane
+  - `client/air_model_gateway_client/` — the consumer SDK
   - `deploy/routing.yaml`, `deploy/pricing.yaml`, `deploy/policy/policy.local.yaml` —
     DevOps-owned config
   - `Makefile`, `docker-compose.yml`, `Dockerfile` — standalone local stack, no
@@ -158,10 +158,10 @@ curl -X POST http://localhost:8083/v1/inference \
   -d '{"task":"chat","model":"classify-default","messages":[{"role":"user","content":"Classify sentiment: I love this product!"}],"max_tokens":300,"json_schema":{"type":"object","properties":{"label":{"type":"string"}},"required":["label"]}}'
 
 # 6. Prometheus metrics — cost/tokens/timeouts per provider, out of the box
-curl http://localhost:8083/metrics | grep ^air_llm
+curl http://localhost:8083/metrics | grep ^air_model_gateway
 ```
 
-**The strongest live moment**: point `AIR_LLM_OLLAMA__BASE_URL` at a port with
+**The strongest live moment**: point `AIR_MODEL_GATEWAY_OLLAMA__BASE_URL` at a port with
 nothing listening, `make up`, show `/v1/ready` reporting `ollama: false` — then
 start Ollama and hit `/v1/ready` again on the *same, unrestarted* container. It
 flips to `true` and the very next inference call just works. No redeploy, no
@@ -195,7 +195,7 @@ trying to break things, not just left unconsidered:
 - **The self-hosted slot only serves chat right now** — the running llama.cpp
   instance has no embedding model loaded (`llama-server` serves one or the
   other per process).
-- **Unpriced-model spend has a metric but no alert.** `air_llm_model_unpriced_total`
+- **Unpriced-model spend has a metric but no alert.** `air_model_gateway_model_unpriced_total`
   exists; nothing watches it yet.
 - **Some real behavior is unverified, only assumed reasonable**: whether every
   provider adapter cancels its underlying connection cleanly on a timeout
@@ -204,7 +204,7 @@ trying to break things, not just left unconsidered:
 - **Policy is read-only.** `/v1/admin/policy` dumps the effective policy; there's
   no write endpoint to change it without editing the YAML and restarting.
 - **No consumer has actually cut over yet.** air-classifier's `InfraGatewayProvider`
-  still hardcodes `/v1/models/chat` (air-infra's old path, not air-llm's
+  still hardcodes `/v1/models/chat` (air-infra's old path, not air-model-gateway's
   `/v1/inference`) and its `gateway.enabled` flag is off — the fix is small
   (documented, one line) but it hasn't landed.
 - **`ApiSettings` (`api.host`/`.port`) is declared but never read** — the real
@@ -226,7 +226,7 @@ Roughly in the order they'd likely matter to a new owner:
    the README no longer claims this exists; building it is still valuable.
 5. **Environment-scoped routing.yaml** (`routing.dev.yaml`, `routing.prod.yaml`,
    ...) so dev/QA/prod can genuinely differ in model choice without touching code
-   — the mechanism (`AIR_LLM_GATEWAY__ROUTING_CONFIG_PATH`) already supports this.
+   — the mechanism (`AIR_MODEL_GATEWAY_GATEWAY__ROUTING_CONFIG_PATH`) already supports this.
 6. **Validate vLLM or TGI against real GPU infrastructure** for the eventual
    UAT/Prod self-hosted tier — llama.cpp locally proved the integration point,
    not the production performance characteristics.

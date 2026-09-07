@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "air-llm"
+name = "air-model-gateway"
 version = "0.1.0"
 description = "Central LLM gateway for the AIR platform: unified inference API, provider routing/failover, cost accounting, and observability — reached directly by every consumer in every environment."
 readme = "README.md"
@@ -39,10 +39,10 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/air/air-llm"
+Repository = "https://github.com/air/air-model-gateway"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/air_llm", "client/air_llm_client"]
+packages = ["src/air_model_gateway", "client/air_model_gateway_client"]
 
 [tool.ruff]
 line-length = 100

@@ -29,4 +29,4 @@ async def test_capabilities_ok(client: httpx.AsyncClient) -> None:
 async def test_metrics_endpoint(client: httpx.AsyncClient) -> None:
     r = await client.get("/metrics")
     assert r.status_code == 200
-    assert "air_llm_requests_total" in r.text
+    assert "air_model_gateway_requests_total" in r.text

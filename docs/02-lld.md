@@ -1,4 +1,4 @@
-# AIR LLM — Low-Level Design
+# AIR Model Gateway — Low-Level Design
 
 **Status:** Draft for review · **Companion docs:** [Plan](00-plan.md) · [HLD](01-hld.md)
 
@@ -7,7 +7,7 @@ wrong, the document is amended rather than silently diverged from.
 
 Modules marked **[ported]** below are lifted from `air-infra`'s
 `src/air_infra/gateway/` near-verbatim — same class shapes, same behavior, imports
-rewritten from `air_infra.*` to `air_llm.*`. They are not being redesigned as part of
+rewritten from `air_infra.*` to `air_model_gateway.*`. They are not being redesigned as part of
 this move; see [Plan §4](00-plan.md#4-decisions-taken).
 
 ---
@@ -15,10 +15,10 @@ this move; see [Plan §4](00-plan.md#4-decisions-taken).
 ## 1. Repository layout
 
 ```
-air-llm/
+air-model-gateway/
 ├── pyproject.toml                 # deps, ruff, mypy, pytest config
 ├── Dockerfile                     # multi-stage, non-root runtime
-├── docker-compose.yml             # air-llm + local Ollama (+ optional local Redis for Phase 5 dev)
+├── docker-compose.yml             # air-model-gateway + local Ollama (+ optional local Redis for Phase 5 dev)
 ├── Makefile                       # up / down / test / lint / run targets
 ├── .env.example                   # every settings key, documented
 ├── deploy/
@@ -27,10 +27,10 @@ air-llm/
 │   ├── routing.yaml                # alias -> failover chain (DevOps-owned)   [ported]
 │   └── pricing.yaml                # USD per Mtok per model (DevOps-owned)    [ported]
 ├── docs/                           # 00-plan · 01-hld · 02-lld
-├── client/air_llm_client/          # the SDK consumers import
-│   ├── __init__.py                 # AirLLMClient
+├── client/air_model_gateway_client/  # the SDK consumers import
+│   ├── __init__.py                 # AirModelGatewayClient
 │   └── client.py                   # chat() / embeddings(), both POST /v1/inference under the hood
-└── src/air_llm/
+└── src/air_model_gateway/
     ├── __init__.py                 # __version__
     ├── main.py                     # create_app(), lifespan, middleware wiring
     ├── config.py                   # Settings (pydantic-settings), get_settings()
@@ -69,7 +69,7 @@ air-llm/
 ```
 
 Deliberately absent, relative to `air-infra`'s layout: `registry/`, `broker/`,
-`stores/`, `secrets/`. `air-llm` has no stores and brokers no credentials — it has
+`stores/`, `secrets/`. `air-model-gateway` has no stores and brokers no credentials — it has
 exactly one resource (`inference`) and serves it itself. Provider API keys come
 straight from `Settings` (env-populated, same as air-infra's own gateway actually
 does it today — air-infra's `broker/secrets.py` backs credential *issuance* for
@@ -80,7 +80,7 @@ concrete need for one shows up, not built ahead of one.
 
 ## 2. Configuration (`config.py`)
 
-`Settings` (pydantic-settings), env prefix `AIR_LLM_`, nested delimiter `__`.
+`Settings` (pydantic-settings), env prefix `AIR_MODEL_GATEWAY_`, nested delimiter `__`.
 
 | Group | Keys | Notes |
 |---|---|---|
@@ -191,7 +191,7 @@ class ChatResponse(BaseModel):
 
 This is the part that is genuinely new relative to `air-infra`'s gateway, because in
 `air-infra` this layer lived one level up (`air-infra`'s own `api/deps.py`) and
-`air-llm` cannot assume anything sits in front of it.
+`air-model-gateway` cannot assume anything sits in front of it.
 
 - `security/apikeys.py::verify_token` — resolves `X-API-Key` to a `Principal(service=…)`
   against `security.service_tokens`. Same shape as `air-infra`'s.
@@ -225,13 +225,13 @@ This is the part that is genuinely new relative to `air-infra`'s gateway, becaus
   applied, and *every* AIR service sharing that Ollama instance paid a reload
   cold-start on the next call past that window. Fixed centrally, as a config default,
   rather than exposed as a per-request field on `InferenceRequest` — this is an
-  operational concern about how long air-llm keeps a model warm in a shared local
+  operational concern about how long air-model-gateway keeps a model warm in a shared local
   runtime, not something that changes any individual response, and the whole premise
   of a unified gateway is that a caller like air-classifier shouldn't need to know
   it's talking to Ollama at all, let alone tune Ollama-specific memory-management
   flags per call. Verified against a live Ollama instance: `/api/ps`'s reported
   `expires_at` moved from ~5 minutes out to exactly the configured 30 after a real
-  call through air-llm, not just asserted from the outgoing payload.
+  call through air-model-gateway, not just asserted from the outgoing payload.
 - **`SelfHostedProvider`** (added after Phase 1, originally slated for Phase 5 — see
   Plan §3) covers any OpenAI-wire-compatible self-hosted backend: llama.cpp's
   `llama-server` locally by default (`make llamacpp-up`), vLLM/TGI in prod; LM Studio
@@ -255,12 +255,12 @@ This is the part that is genuinely new relative to `air-infra`'s gateway, becaus
 - **Per-attempt deadline.** Each attempt runs under
   `asyncio.wait_for(request_timeout_seconds)`; a timeout becomes a `ProviderError`, so a
   *hang* fails over exactly as an error does. Counted on
-  `air_llm_provider_timeouts_total`. Retry/circuit-breaking layer on later.
+  `air_model_gateway_provider_timeouts_total`. Retry/circuit-breaking layer on later.
 - `ResponseCache` keys on `(model, normalized messages, max_tokens, temperature,
   json_schema, schema_name, cache_prefix)` — every field that can change what a
   legitimate response looks like, so two structurally different requests
   against the same messages (e.g. one asking for a JSON Schema, one not)
-  cannot collide. **This is one place air-llm diverges from a pure port**:
+  cannot collide. **This is one place air-model-gateway diverges from a pure port**:
   air-infra's original cache key omitted the structured-output fields, which
   was a live collision bug there too, not a porting regression — caught and
   fixed here (`tests/test_cache.py`). Bounded by `cache_max_entries` in
@@ -270,19 +270,19 @@ This is the part that is genuinely new relative to `air-infra`'s gateway, becaus
   capacity, evicts the one closest to expiry. In-memory now, Redis-backed
   (with Redis's own eviction policy) behind the same interface from Phase 5.
 - `PriceBook.price(provider, model, usage)` reads `deploy/pricing.yaml`; a model absent
-  from it prices at 0.0 and increments `air_llm_model_unpriced_total`.
+  from it prices at 0.0 and increments `air_model_gateway_model_unpriced_total`.
 - Every call is audited with `{service, model, provider, tokens, cost, cached}`.
 
-## 6. Client SDK (`client/air_llm_client/`)
+## 6. Client SDK (`client/air_model_gateway_client/`)
 
 ```python
-llm = AirLLMClient(base_url=…, token=…)        # defaults from AIR_LLM_URL / AIR_LLM_TOKEN
+llm = AirModelGatewayClient(base_url=…, token=…)        # defaults from AIR_MODEL_GATEWAY_URL / AIR_MODEL_GATEWAY_TOKEN
 reply = await llm.chat(messages=[…], model="smart")
 vecs  = await llm.embeddings(input=[…], model="embed")
 ```
 
 No lazy driver imports needed (unlike `air_infra_client`, which defers `asyncpg`/`motor`)
-— this SDK only ever speaks HTTP to `air-llm`.
+— this SDK only ever speaks HTTP to `air-model-gateway`.
 
 ## 7. Errors (RFC 9457)
 
@@ -299,12 +299,12 @@ No lazy driver imports needed (unlike `air_infra_client`, which defers `asyncpg`
 ## 8. Observability
 
 - **Logs** — structlog; JSON in prod, console locally; `request_id` bound per request.
-- **Metrics** — Prometheus at `/metrics`: `air_llm_requests_total{route,status}`,
-  `air_llm_model_tokens_total{provider,model,kind}`,
-  `air_llm_model_cost_usd_total{provider,model}`,
-  `air_llm_model_unpriced_total{provider,model}`,
-  `air_llm_provider_timeouts_total{provider}`,
-  `air_llm_ratelimited_total{service,resource}`.
+- **Metrics** — Prometheus at `/metrics`: `air_model_gateway_requests_total{route,status}`,
+  `air_model_gateway_model_tokens_total{provider,model,kind}`,
+  `air_model_gateway_model_cost_usd_total{provider,model}`,
+  `air_model_gateway_model_unpriced_total{provider,model}`,
+  `air_model_gateway_provider_timeouts_total{provider}`,
+  `air_model_gateway_ratelimited_total{service,resource}`.
 - **Audit** — structured `model.call` events to the log sink now; a durable sink is a
   backend swap, same TODO shape as `air-infra`'s.
 
@@ -312,7 +312,7 @@ No lazy driver imports needed (unlike `air_infra_client`, which defers `asyncpg`
 
 - `tests/test_system.py` — health/capabilities via `httpx.ASGITransport`.
 - `tests/test_readiness.py` — readiness follows provider health. **Ported from
-  `air-infra`**, simplified: no store-plane distinction, since `air-llm` has no stores.
+  `air-infra`**, simplified: no store-plane distinction, since `air-model-gateway` has no stores.
 - `tests/test_policy.py` — allow/deny matrix + default-allow toggle, resource
   renamed `models` → `inference`. **Ported.**
 - `tests/test_gateway.py` — router failover, hang-to-failover under the deadline. **Ported

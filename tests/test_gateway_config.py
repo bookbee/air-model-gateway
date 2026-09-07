@@ -1,4 +1,4 @@
-"""air-llm's DevOps-owned config: routing table and price book.
+"""air-model-gateway's DevOps-owned config: routing table and price book.
 
 These also guard the files actually shipped in deploy/ — a typo there would
 otherwise only surface as a mis-routed or unpriced call at runtime.
@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from air_llm.constants import Provider
-from air_llm.gateway.cost import DEFAULT_PRICING, PriceBook
-from air_llm.gateway.router import DEFAULT_ALIASES, load_aliases
-from air_llm.schemas.gateway import RoutingDoc
-from air_llm.schemas.models import Usage
+from air_model_gateway.constants import Provider
+from air_model_gateway.gateway.cost import DEFAULT_PRICING, PriceBook
+from air_model_gateway.gateway.router import DEFAULT_ALIASES, load_aliases
+from air_model_gateway.schemas.gateway import RoutingDoc
+from air_model_gateway.schemas.models import Usage
 
 ROUTING = "deploy/routing.yaml"
 PRICING = "deploy/pricing.yaml"
@@ -24,7 +24,7 @@ PRICING = "deploy/pricing.yaml"
 def test_shipped_routing_config_loads() -> None:
     aliases = load_aliases(ROUTING)
     assert set(aliases) >= {"fast", "smart", "embed"}
-    # Every chain names a provider air-llm can actually build.
+    # Every chain names a provider air-model-gateway can actually build.
     for chain in aliases.values():
         assert chain
         for provider, model in chain:

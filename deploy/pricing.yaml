@@ -1,9 +1,9 @@
 # Model price table, USD per MILLION tokens — the unit providers publish, so a
 # rate can be copied from a pricing page without arithmetic.
 #
-# Loaded by air_llm.gateway.cost at boot. DevOps-owned: provider price changes
+# Loaded by air_model_gateway.gateway.cost at boot. DevOps-owned: provider price changes
 # land here, not in a release. A model absent from this table prices at 0.0 and
-# is reported through the `air_llm_model_unpriced_total` counter, so an
+# is reported through the `air_model_gateway_model_unpriced_total` counter, so an
 # unpriced model shows up as a metric rather than as silently free spend.
 #
 # Use LIST prices, not promotional or negotiated ones. An over-estimate only ever

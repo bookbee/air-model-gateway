@@ -14,10 +14,10 @@ from typing import Any
 
 import pytest
 
-from air_llm.constants import Provider
-from air_llm.gateway.base import ProviderError
-from air_llm.gateway.providers.gemini_provider import GeminiProvider
-from air_llm.schemas.models import ChatRequest, Message
+from air_model_gateway.constants import Provider
+from air_model_gateway.gateway.base import ProviderError
+from air_model_gateway.gateway.providers.gemini_provider import GeminiProvider
+from air_model_gateway.schemas.models import ChatRequest, Message
 
 FLAT_SCHEMA: dict[str, Any] = {
     "type": "object",

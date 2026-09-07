@@ -1,50 +1,50 @@
-# air-llm local stack. Standalone by design: no dependency on air-infra's
-# compose stack, since air-infra never runs in production and air-llm must work
+# air-model-gateway local stack. Standalone by design: no dependency on air-infra's
+# compose stack, since air-infra never runs in production and air-model-gateway must work
 # the same way in every environment (docs/00-plan.md §1, §4).
 #
-#   base:                    air-llm
+#   base:                    air-model-gateway
 #   --profile ollama:        ollama (see OLLAMA=container|native in the Makefile)
 #   --profile observability: prometheus
 #
 # Host port 8083: the next free slot in the AIR service port block
 # (air-infra/README.md's port map — 8080 air-infra, 8081 air-platform,
-# 8082 air-classifier). air-llm's own port is tracked in README.md here.
-name: air-llm
+# 8082 air-classifier). air-model-gateway's own port is tracked in README.md here.
+name: air-model-gateway
 
 x-restart: &restart
   restart: unless-stopped
 
 # Reaches the developer's laptop from inside a container — needed when OLLAMA=native
-# points air-llm at an ollama running on the host rather than the container below.
+# points air-model-gateway at an ollama running on the host rather than the container below.
 x-host-access: &host-access
   extra_hosts:
     - "host.docker.internal:host-gateway"
 
 services:
-  air-llm:
+  air-model-gateway:
     <<: [*restart, *host-access]
     build: .
     # Pinned explicitly, as every other AIR service does. Without it compose
-    # derives `<project>-<service>` and the name doubles to `air-llm-air-llm`.
+    # derives `<project>-<service>` and the name doubles to `air-model-gateway-air-model-gateway`.
     # The `local` tag says "built from this checkout", so it cannot be confused
     # with anything pulled from a registry.
-    image: air-llm:local
+    image: air-model-gateway:local
     env_file: [.env]
     environment:
-      AIR_LLM_ENVIRONMENT: local
+      AIR_MODEL_GATEWAY_ENVIRONMENT: local
       # Overrides .env — `environment:` wins over `env_file:`. The Makefile sets
-      # AIR_LLM_OLLAMA_URL from OLLAMA=container|native, so this follows whichever
+      # AIR_MODEL_GATEWAY_OLLAMA_URL from OLLAMA=container|native, so this follows whichever
       # ollama is actually serving.
-      AIR_LLM_OLLAMA__BASE_URL: ${AIR_LLM_OLLAMA_URL:-http://ollama:11434}
+      AIR_MODEL_GATEWAY_OLLAMA__BASE_URL: ${AIR_MODEL_GATEWAY_OLLAMA_URL:-http://ollama:11434}
       # Self-hosted backends (llama.cpp, LM Studio, vLLM, ...) always run on
       # the host, not as a service in this compose file — there is no
       # containerised option the way Ollama has one, so this always goes
       # through host-gateway. Port 8181: llama-server (`make llamacpp-up`).
-      AIR_LLM_SELF_HOSTED__BASE_URL: http://host.docker.internal:8181/v1
+      AIR_MODEL_GATEWAY_SELF_HOSTED__BASE_URL: http://host.docker.internal:8181/v1
     ports: ["8083:8080"]
     networks:
       default:
-        aliases: ["air-llm"]
+        aliases: ["air-model-gateway"]
     # No depends_on for ollama: it is profile-gated and legitimately absent in
     # native mode. An unreachable provider is reported through /v1/capabilities
     # and /v1/ready rather than refusing to boot.
@@ -53,7 +53,7 @@ services:
   # Same container/native choice air-infra's Makefile offers for its own local
   # ollama — the two are independent copies, not a shared dependency.
   #
-  # Version pinned deliberately, not left on a floating tag: air-llm's default
+  # Version pinned deliberately, not left on a floating tag: air-model-gateway's default
   # routing alias ("fast") targets llama3.2:3b, and a floating tag would move
   # that runtime's behaviour out from under it without a corresponding change here.
   ollama:
@@ -89,4 +89,4 @@ volumes:
 
 networks:
   default:
-    name: air-llm-net
+    name: air-model-gateway-net

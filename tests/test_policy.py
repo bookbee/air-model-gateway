@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from air_llm.constants import Action
-from air_llm.policy.engine import PolicyEngine
-from air_llm.schemas.common import Principal
-from air_llm.schemas.policy import PolicyDoc, ServicePolicy
+from air_model_gateway.constants import Action
+from air_model_gateway.policy.engine import PolicyEngine
+from air_model_gateway.schemas.common import Principal
+from air_model_gateway.schemas.policy import PolicyDoc, ServicePolicy
 
 
 def _engine(default_allow: bool) -> PolicyEngine:

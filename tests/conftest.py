@@ -5,8 +5,8 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
-from air_llm.config import PolicySettings, SecuritySettings, Settings
-from air_llm.main import create_app
+from air_model_gateway.config import PolicySettings, SecuritySettings, Settings
+from air_model_gateway.main import create_app
 
 
 @pytest.fixture

@@ -10,9 +10,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from air_llm.constants import Provider
-from air_llm.gateway.providers.self_hosted_provider import SelfHostedProvider
-from air_llm.schemas.models import ChatRequest, EmbeddingsRequest, Message
+from air_model_gateway.constants import Provider
+from air_model_gateway.gateway.providers.self_hosted_provider import SelfHostedProvider
+from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Message
 
 FLAT_SCHEMA: dict[str, Any] = {
     "type": "object",

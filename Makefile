@@ -37,7 +37,7 @@ else
 $(error OLLAMA must be `native` or `container`, got `$(OLLAMA)`)
 endif
 
-export AIR_LLM_OLLAMA_URL := $(OLLAMA_URL)
+export AIR_MODEL_GATEWAY_OLLAMA_URL := $(OLLAMA_URL)
 
 SOURCES := src client tests
 
@@ -45,7 +45,7 @@ SOURCES := src client tests
 
 .PHONY: help
 help: ## Show this help
-	@echo "air-llm — make <target>"
+	@echo "air-model-gateway — make <target>"
 	@echo
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -55,7 +55,7 @@ help: ## Show this help
 
 # ---- local stack -----------------------------------------------------------
 .PHONY: up
-up: ## Start air-llm [, ollama]
+up: ## Start air-model-gateway [, ollama]
 ifeq ($(OLLAMA),native)
 	@curl -sf -m 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || { \
 		echo ""; \
@@ -64,7 +64,7 @@ ifeq ($(OLLAMA),native)
 		echo "  Option 1 — start native ollama, then re-run this command:"; \
 		echo "      ollama serve"; \
 		echo ""; \
-		echo "  Option 2 — use air-llm's bundled ollama container instead:"; \
+		echo "  Option 2 — use air-model-gateway's bundled ollama container instead:"; \
 		echo "      OLLAMA=container make up"; \
 		echo ""; \
 		exit 1; \
@@ -74,7 +74,7 @@ ifeq ($(OLLAMA),native)
 endif
 	$(COMPOSE) $(OLLAMA_PROFILE) up -d --build
 	@echo
-	@echo "air-llm:  http://localhost:$(PORT)/v1/health"
+	@echo "air-model-gateway:  http://localhost:$(PORT)/v1/health"
 	@echo "ollama:   $(OLLAMA) at $(OLLAMA_URL)"
 ifeq ($(OLLAMA),container)
 	@echo "run 'make ollama-pull' once ollama is up"
@@ -98,8 +98,8 @@ ps: ## Show stack status
 	$(COMPOSE) --profile ollama --profile observability ps
 
 .PHONY: logs
-logs: ## Tail air-llm logs (SVC=<name> to pick another)
-	$(COMPOSE) logs -f $(or $(SVC),air-llm)
+logs: ## Tail air-model-gateway logs (SVC=<name> to pick another)
+	$(COMPOSE) logs -f $(or $(SVC),air-model-gateway)
 
 .PHONY: ollama-pull
 ollama-pull: ## Pull the default model into whichever ollama is configured
@@ -117,7 +117,7 @@ ollama-warm: ## Load the model at OLLAMA_NUM_CTX so the first real request is no
 		|| { echo "  failed — is ollama serving on :11434?"; exit 1; }
 
 # ---- self-hosted backend (llama.cpp), local exploration only --------------
-# Not part of `make up` — a separate, opt-in thing to point AIR_LLM_SELF_HOSTED
+# Not part of `make up` — a separate, opt-in thing to point AIR_MODEL_GATEWAY_SELF_HOSTED
 # at, the way LM Studio was used earlier. `brew install llama.cpp` first.
 #
 # -c 4096 --parallel 1 is load-bearing, not cosmetic: llama-server's default
@@ -139,7 +139,7 @@ llamacpp-up: ## Start llama-server (LLAMACPP_MODEL, downloaded/cached on first r
 	llama-server -hf $(LLAMACPP_MODEL) --port $(LLAMACPP_PORT) --alias $(LLAMACPP_ALIAS) \
 		-c $(LLAMACPP_CTX) --parallel 1 > /tmp/llama-server.log 2>&1 &
 	@echo "starting — first run downloads the model, can take a few minutes"
-	@echo "log: /tmp/llama-server.log · point AIR_LLM_SELF_HOSTED__BASE_URL at http://localhost:$(LLAMACPP_PORT)/v1"
+	@echo "log: /tmp/llama-server.log · point AIR_MODEL_GATEWAY_SELF_HOSTED__BASE_URL at http://localhost:$(LLAMACPP_PORT)/v1"
 
 .PHONY: llamacpp-down
 llamacpp-down: ## Stop llama-server
@@ -159,9 +159,9 @@ dev: install ## Add the development toolchain (pytest, ruff, mypy)
 	$(PIP) install -e ".[providers,dev]"
 
 .PHONY: run
-run: ## Run air-llm on the host against a local ollama
-	AIR_LLM_OLLAMA__BASE_URL=http://localhost:11434 \
-	$(UVICORN) air_llm.main:app --reload --host $(HOST) --port $(PORT)
+run: ## Run air-model-gateway on the host against a local ollama
+	AIR_MODEL_GATEWAY_OLLAMA__BASE_URL=http://localhost:11434 \
+	$(UVICORN) air_model_gateway.main:app --reload --host $(HOST) --port $(PORT)
 
 .PHONY: test
 test: ## Run tests
