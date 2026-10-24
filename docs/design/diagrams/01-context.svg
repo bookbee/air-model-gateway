@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 630" width="1160" height="630" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" role="img">
+<title>air-model-gateway: system context</title>
+<defs>
+<marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1F2430"/></marker>
+<marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5F6673"/></marker>
+<marker id="arrow-error" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C62828"/></marker>
+</defs>
+<rect width="1160" height="630" fill="#FFFFFF"/>
+<rect x="20" y="70" width="265" height="440" rx="10" fill="none" stroke="#2F6FDB" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="32" y="88" font-size="12" font-weight="bold" fill="#2F6FDB" text-anchor="start">Consumers · AIR services</text>
+<rect x="35" y="100" width="235" height="62" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
+<text x="45" y="120" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">air-classifier-service</text>
+<text x="45" y="135.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">generate local · auto · cloud, embed</text>
+<polyline points="270,131 380,290" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="35" y="180" width="235" height="62" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
+<text x="45" y="200" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">air-orchestrator-service</text>
+<text x="45" y="215.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">generate cloud (streams), embed</text>
+<polyline points="270,211 380,290" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="35" y="260" width="235" height="62" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
+<text x="45" y="280" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">air-tools</text>
+<text x="45" y="295.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">generate cloud (agent steps)</text>
+<polyline points="270,291 380,290" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="35" y="340" width="235" height="62" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
+<text x="45" y="360" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">air-rag</text>
+<text x="45" y="375.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">embed local-768-v1</text>
+<polyline points="270,371 380,290" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="35" y="420" width="235" height="62" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
+<text x="45" y="440" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">air-web-console</text>
+<text x="45" y="455.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">generate, pin, admin_read</text>
+<polyline points="270,451 380,290" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<text x="325" y="250" font-size="11" font-weight="normal" fill="#5F6673" text-anchor="middle">HTTP + X-API-Key</text>
+<rect x="385" y="70" width="400" height="440" rx="10" fill="none" stroke="#0F8C7E" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="397" y="88" font-size="12" font-weight="bold" fill="#0F8C7E" text-anchor="start">air-model-gateway  (FastAPI · Python 3.12)</text>
+<rect x="400" y="100" width="370" height="70" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="410" y="120" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">HTTP API</text>
+<text x="410" y="135.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">POST /v1/generate · POST /v1/embed</text>
+<text x="410" y="147.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">GET /v1/capabilities · /v1/health · /v1/ready · /metrics</text>
+<rect x="400" y="185" width="370" height="62" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="410" y="205" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Control plane</text>
+<text x="410" y="220.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">service tokens · policy grants · rate limits · daily budgets</text>
+<rect x="400" y="262" width="370" height="62" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="410" y="282" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Model catalog</text>
+<text x="410" y="297.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">class or embedding name → ordered chain</text>
+<rect x="400" y="339" width="370" height="62" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="410" y="359" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Router</text>
+<text x="410" y="374.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">failover · retries · circuit breakers · provider quotas</text>
+<rect x="400" y="416" width="370" height="70" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
+<text x="410" y="436" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Bookkeeping</text>
+<text x="410" y="451.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">pricing · spend ledger · response cache</text>
+<text x="410" y="463.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">metrics · model.call audit line</text>
+<rect x="880" y="70" width="260" height="200" rx="10" fill="none" stroke="#3C8D2F" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="892" y="88" font-size="12" font-weight="bold" fill="#3C8D2F" text-anchor="start">Local model servers  (free, private)</text>
+<rect x="895" y="100" width="230" height="62" rx="7" fill="#E8F5E3" stroke="#3C8D2F" stroke-width="1.4"/>
+<text x="905" y="120" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Ollama</text>
+<text x="905" y="135.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">llama3.2:3b · ministral-3:3b · nomic-embed-text</text>
+<rect x="895" y="180" width="230" height="62" rx="7" fill="#E8F5E3" stroke="#3C8D2F" stroke-width="1.4"/>
+<text x="905" y="200" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Self-hosted slot  (llama.cpp)</text>
+<text x="905" y="215.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">any OpenAI-compatible server: vLLM, TGI</text>
+<rect x="880" y="290" width="260" height="220" rx="10" fill="none" stroke="#D9822B" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text x="892" y="308" font-size="12" font-weight="bold" fill="#D9822B" text-anchor="start">Cloud APIs  (billed per token)</text>
+<rect x="895" y="320" width="230" height="52" rx="7" fill="#FDEFE2" stroke="#D9822B" stroke-width="1.4"/>
+<text x="905" y="340" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Gemini</text>
+<text x="905" y="355.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">gemini-2.5-flash · 3.1-pro-preview</text>
+<rect x="895" y="382" width="230" height="52" rx="7" fill="#FDEFE2" stroke="#D9822B" stroke-width="1.4"/>
+<text x="905" y="402" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Anthropic</text>
+<text x="905" y="417.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">claude-haiku-4-5 · claude-sonnet-5</text>
+<rect x="895" y="444" width="230" height="52" rx="7" fill="#FDEFE2" stroke="#D9822B" stroke-width="1.4"/>
+<text x="905" y="464" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">OpenAI</text>
+<text x="905" y="479.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">gpt-4o-mini · text-embedding-3-small</text>
+<polyline points="770,370 880,170" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<polyline points="770,370 880,400" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="400" y="545" width="175" height="62" rx="7" fill="#FCE8EC" stroke="#C23B57" stroke-width="1.4"/>
+<text x="410" y="565" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Redis  (optional)</text>
+<text x="410" y="580.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">shared cache, limits, spend</text>
+<rect x="595" y="545" width="175" height="62" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
+<text x="605" y="565" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Prometheus · logs</text>
+<text x="605" y="580.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">/metrics · JSON lines</text>
+<polyline points="487,510 487,545" fill="none" stroke="#5F6673" stroke-width="1.5" marker-start="url(#arrow-muted)" marker-end="url(#arrow-muted)"/>
+<polyline points="682,510 682,545" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="300" y="8" width="560" height="46" rx="7" fill="#F2F3F5" stroke="#5F6673" stroke-width="1.4"/>
+<text x="580.0" y="35.0" font-size="12" font-weight="bold" fill="#1F2430" text-anchor="middle">Owner-managed config: deploy/routing.yaml · pricing.yaml · policy/policy.&lt;env&gt;.yaml</text>
+<polyline points="585,54 585,70" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<text x="880" y="580" font-size="12" font-weight="bold" fill="#0F8C7E" text-anchor="start">No runtime dependency on any other AIR service.</text>
+<text x="880" y="597" font-size="11" font-weight="normal" fill="#5F6673" text-anchor="start">Consumers call it directly; it calls only</text>
+<text x="880" y="612" font-size="11" font-weight="normal" fill="#5F6673" text-anchor="start">model servers, cloud APIs and its own Redis.</text>
+<circle cx="30" cy="70" r="11" fill="#1F2430"/>
+<text x="30" y="74.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">1</text>
+<circle cx="395" cy="100" r="11" fill="#1F2430"/>
+<text x="395" y="104.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">2</text>
+<circle cx="295" cy="30" r="11" fill="#1F2430"/>
+<text x="295" y="34.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">3</text>
+<circle cx="870" cy="80" r="11" fill="#1F2430"/>
+<text x="870" y="84.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">4</text>
+<circle cx="870" cy="300" r="11" fill="#1F2430"/>
+<text x="870" y="304.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">5</text>
+<circle cx="390" cy="545" r="11" fill="#1F2430"/>
+<text x="390" y="549.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">6</text>
+<circle cx="585" cy="545" r="11" fill="#1F2430"/>
+<text x="585" y="549.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">7</text>
+<circle cx="870" cy="575" r="11" fill="#1F2430"/>
+<text x="870" y="579.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">8</text>
+</svg>

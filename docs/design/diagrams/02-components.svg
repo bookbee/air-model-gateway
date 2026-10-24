@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 660" width="1160" height="660" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" role="img">
+<title>air-model-gateway: components</title>
+<defs>
+<marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1F2430"/></marker>
+<marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5F6673"/></marker>
+<marker id="arrow-error" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C62828"/></marker>
+</defs>
+<rect width="1160" height="660" fill="#FFFFFF"/>
+<text x="580" y="22" font-size="12" font-weight="bold" fill="#5F6673" text-anchor="middle">Request path (top to bottom)</text>
+<rect x="425" y="34" width="310" height="56" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="435" y="54" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">api/middleware.py</text>
+<text x="435" y="69.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">request id · metrics · last-resort 500</text>
+<rect x="425" y="110" width="310" height="56" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="435" y="130" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">api/v1/generate.py · embed.py</text>
+<text x="435" y="145.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">thin routes; also system.py, admin.py</text>
+<polyline points="580,90 580,110" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<rect x="425" y="186" width="310" height="56" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="435" y="206" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">api/deps.py · require_principal</text>
+<text x="435" y="221.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">X-API-Key → calling service</text>
+<polyline points="580,166 580,186" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<rect x="425" y="262" width="310" height="56" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="435" y="282" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">model_calls.admit</text>
+<text x="435" y="297.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">policy grant · rate limit</text>
+<polyline points="580,242 580,262" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<rect x="425" y="338" width="310" height="56" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="435" y="358" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">model_calls.generate / embed</text>
+<text x="435" y="373.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">choose chain · cache · budget · bookkeeping</text>
+<polyline points="580,318 580,338" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<rect x="425" y="414" width="310" height="56" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="435" y="434" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">gateway/router.py · ModelRouter</text>
+<text x="435" y="449.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">quota · breaker · deadline · failover · retry</text>
+<polyline points="580,394 580,414" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<rect x="425" y="490" width="310" height="56" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="435" y="510" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">gateway/providers/*</text>
+<text x="435" y="525.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">ollama · llama.cpp · anthropic · openai · gemini</text>
+<polyline points="580,470 580,490" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<rect x="40" y="34" width="320" height="56" rx="7" fill="#F2F3F5" stroke="#5F6673" stroke-width="1.4"/>
+<text x="50" y="54" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">main.py · create_app</text>
+<text x="50" y="69.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">composition root: builds everything once,</text>
+<text x="50" y="81.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">hangs it on app.state</text>
+<rect x="40" y="110" width="320" height="56" rx="7" fill="#F2F3F5" stroke="#5F6673" stroke-width="1.4"/>
+<text x="50" y="130" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">config.py · Settings</text>
+<text x="50" y="145.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">env &gt; SECRETS_DIR files &gt; .env</text>
+<rect x="40" y="186" width="320" height="56" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="50" y="206" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">security/apikeys.py</text>
+<text x="50" y="221.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">ApiKeyVerifier: token → service</text>
+<rect x="40" y="262" width="320" height="56" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="50" y="282" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">policy/engine.py · ratelimit.py</text>
+<text x="50" y="297.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">grants, fail-closed · token buckets</text>
+<rect x="40" y="338" width="320" height="56" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="50" y="358" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">gateway/models.py · ModelCatalog</text>
+<text x="50" y="373.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">class · pin · embed name → chain</text>
+<rect x="40" y="414" width="320" height="56" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="50" y="434" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">gateway/resilience.py</text>
+<text x="50" y="449.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">CircuitBreaker · jittered backoff</text>
+<polyline points="360,214 425,214" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<polyline points="360,290 425,262" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<polyline points="360,366 425,338" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<polyline points="360,442 425,414" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="800" y="34" width="320" height="56" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
+<text x="810" y="54" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">observability/</text>
+<text x="810" y="69.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">metrics.py: Prometheus · logging.py: JSON</text>
+<rect x="800" y="186" width="320" height="56" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="810" y="206" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">api/errors.py</text>
+<text x="810" y="221.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">RFC 9457 problem+json, request id</text>
+<rect x="800" y="262" width="320" height="56" rx="7" fill="#FCE8EC" stroke="#C23B57" stroke-width="1.4"/>
+<text x="810" y="282" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">policy/budget.py · SpendLedger</text>
+<text x="810" y="297.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">USD per service per UTC day</text>
+<rect x="800" y="338" width="320" height="56" rx="7" fill="#FCE8EC" stroke="#C23B57" stroke-width="1.4"/>
+<text x="810" y="358" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">gateway/cache.py · ResponseCache</text>
+<text x="810" y="373.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">per service; keyed on chain + question</text>
+<rect x="800" y="414" width="320" height="56" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
+<text x="810" y="434" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">gateway/cost.py · PriceBook</text>
+<text x="810" y="449.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">USD per million tokens (pricing.yaml)</text>
+<rect x="800" y="490" width="320" height="62" rx="7" fill="#F2F3F5" stroke="#5F6673" stroke-width="1.4"/>
+<text x="810" y="510" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">schemas/</text>
+<text x="810" y="525.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">wire: generate.py, embed.py</text>
+<text x="810" y="537.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">internal: models.py (adapters)</text>
+<polyline points="735,62 800,62" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<polyline points="735,338 800,290" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<polyline points="735,352 800,366" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<polyline points="735,366 800,442" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="40" y="580" width="1080" height="48" rx="7" fill="#FCE8EC" stroke="#C23B57" stroke-width="1.4"/>
+<text x="50" y="600" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">redis_store.py · RedisStore  (optional)</text>
+<text x="50" y="615.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">owns timeout, breaker and error metric; limiter, cache and ledger fall back to memory on any Redis failure</text>
+<polyline points="200,318 200,580" fill="none" stroke="#5F6673" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-muted)"/>
+<polyline points="960,394 960,470 1140,470 1140,604 1120,604" fill="none" stroke="#5F6673" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-muted)"/>
+<polyline points="960,318 960,330" fill="none" stroke="#5F6673" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-muted)"/>
+<polyline points="735,524 780,524 780,640" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<text x="788" y="650" font-size="11" font-weight="normal" fill="#5F6673" text-anchor="start">→ model servers and cloud APIs</text>
+<circle cx="415" cy="34" r="11" fill="#1F2430"/>
+<text x="415" y="38.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">1</text>
+<circle cx="30" cy="34" r="11" fill="#1F2430"/>
+<text x="30" y="38.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">2</text>
+<circle cx="30" cy="262" r="11" fill="#1F2430"/>
+<text x="30" y="266.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">3</text>
+<circle cx="415" cy="338" r="11" fill="#1F2430"/>
+<text x="415" y="342.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">4</text>
+<circle cx="415" cy="414" r="11" fill="#1F2430"/>
+<text x="415" y="418.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">5</text>
+<circle cx="790" cy="338" r="11" fill="#1F2430"/>
+<text x="790" y="342.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">6</text>
+<circle cx="30" cy="580" r="11" fill="#1F2430"/>
+<text x="30" y="584.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">7</text>
+</svg>

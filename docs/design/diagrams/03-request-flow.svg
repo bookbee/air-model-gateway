@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 515" width="1160" height="515" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" role="img">
+<title>air-model-gateway: request flow</title>
+<defs>
+<marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1F2430"/></marker>
+<marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5F6673"/></marker>
+<marker id="arrow-error" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C62828"/></marker>
+</defs>
+<rect width="1160" height="515" fill="#FFFFFF"/>
+<rect x="25" y="40" width="190" height="72" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="35" y="61" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">1  Request id</text>
+<text x="35" y="77.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">kept if valid, else new</text>
+<rect x="247" y="40" width="190" height="72" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="257" y="61" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">2  Authenticate</text>
+<text x="257" y="77.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">X-API-Key → service</text>
+<polyline points="215,76 247,76" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="342.0,112 342.0,152" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<rect x="255" y="152" width="174" height="34" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="342.0" y="172.5" font-size="11" font-weight="bold" fill="#1F2430" text-anchor="middle">401 unauthorized</text>
+<rect x="469" y="40" width="190" height="72" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="479" y="61" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">3  Policy grant</text>
+<text x="479" y="77.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">inference : generate</text>
+<polyline points="437,76 469,76" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="564.0,112 564.0,152" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<rect x="477" y="152" width="174" height="34" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="564.0" y="172.5" font-size="11" font-weight="bold" fill="#1F2430" text-anchor="middle">403 policy_denied</text>
+<rect x="691" y="40" width="190" height="72" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="701" y="61" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">4  Rate limit</text>
+<text x="701" y="77.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">service bucket / min</text>
+<polyline points="659,76 691,76" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="786.0,112 786.0,152" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<rect x="699" y="152" width="174" height="34" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="786.0" y="172.5" font-size="11" font-weight="bold" fill="#1F2430" text-anchor="middle">429 rate_limited</text>
+<rect x="913" y="40" width="190" height="72" rx="7" fill="#F1ECFD" stroke="#6B4FD8" stroke-width="1.4"/>
+<text x="923" y="61" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">5  Model choice</text>
+<text x="923" y="77.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">grant + catalog → chain</text>
+<polyline points="881,76 913,76" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="1008.0,112 1008.0,152" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<rect x="921" y="152" width="174" height="34" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="1008.0" y="172.5" font-size="11" font-weight="bold" fill="#1F2430" text-anchor="middle">403 · 422 invalid_model_choice</text>
+<rect x="25" y="290" width="190" height="72" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="35" y="311" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">6  Cache</text>
+<text x="35" y="327.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">per service · hit = answer</text>
+<polyline points="120.0,362 120.0,402" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<rect x="33" y="402" width="174" height="34" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
+<text x="120.0" y="422.5" font-size="11" font-weight="bold" fill="#1F2430" text-anchor="middle">200 cached: true</text>
+<rect x="247" y="290" width="190" height="72" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="257" y="311" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">7  Daily budget</text>
+<text x="257" y="327.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">paid calls only</text>
+<polyline points="215,326 247,326" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="342.0,362 342.0,402" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<rect x="255" y="402" width="174" height="34" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="342.0" y="422.5" font-size="11" font-weight="bold" fill="#1F2430" text-anchor="middle">429 budget_exceeded</text>
+<rect x="469" y="290" width="190" height="72" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="479" y="311" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">8  Router</text>
+<text x="479" y="327.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">walk chain, failover</text>
+<polyline points="437,326 469,326" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="564.0,362 564.0,402" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<rect x="477" y="402" width="174" height="34" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="564.0" y="422.5" font-size="11" font-weight="bold" fill="#1F2430" text-anchor="middle">502 · 429 if all throttled</text>
+<rect x="691" y="290" width="190" height="72" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="701" y="311" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">9  Bookkeeping</text>
+<text x="701" y="327.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">price · spend · cache · audit</text>
+<polyline points="659,326 691,326" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<rect x="913" y="290" width="190" height="72" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="923" y="311" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">200  Answer</text>
+<text x="923" y="327.5" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">JSON, or SSE stream</text>
+<polyline points="881,326 913,326" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="1008.0,112 1008.0,200 120.0,200 120.0,290" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="580" y="193" font-size="11" font-weight="normal" fill="#5F6673" text-anchor="middle">then</text>
+<text x="25" y="480" font-size="12" font-weight="normal" fill="#5F6673" text-anchor="start">POST /v1/embed takes the same path with action embed, an embedding name instead of a class, and no cache step.</text>
+<text x="25" y="500" font-size="12" font-weight="normal" fill="#5F6673" text-anchor="start">Every error is application/problem+json with a stable code and the request id. Retry only 429 rate_limited, 502, 503.</text>
+</svg>

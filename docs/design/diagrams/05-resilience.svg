@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 575" width="1060" height="575" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" role="img">
+<title>air-model-gateway: resilience</title>
+<defs>
+<marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1F2430"/></marker>
+<marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5F6673"/></marker>
+<marker id="arrow-error" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C62828"/></marker>
+</defs>
+<rect width="1060" height="575" fill="#FFFFFF"/>
+<text x="20" y="24" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">Walking a chain (gateway/router.py)</text>
+<rect x="20" y="40" width="170" height="50" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="105.0" y="63.75" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="middle">Next rung</text>
+<text x="105.0" y="79.25" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">(provider, model)</text>
+<rect x="230" y="40" width="170" height="50" rx="7" fill="#FFFFFF" stroke="#9AA1AC" stroke-width="1.4"/>
+<text x="315.0" y="69.5" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="middle">Breaker open?</text>
+<rect x="440" y="40" width="170" height="50" rx="7" fill="#FFFFFF" stroke="#9AA1AC" stroke-width="1.4"/>
+<text x="525.0" y="63.75" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="middle">Quota spent?</text>
+<text x="525.0" y="79.25" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">provider_quotas</text>
+<rect x="650" y="40" width="200" height="50" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="750.0" y="63.75" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="middle">Call with deadline</text>
+<text x="750.0" y="79.25" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">60 s per attempt</text>
+<rect x="890" y="40" width="150" height="50" rx="7" fill="#E8F5E3" stroke="#3C8D2F" stroke-width="1.4"/>
+<text x="965.0" y="63.75" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="middle">Served</text>
+<text x="965.0" y="79.25" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">bookkeeping</text>
+<polyline points="190,65 230,65" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<polyline points="400,65 440,65" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="420" y="59" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">no</text>
+<polyline points="610,65 650,65" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="630" y="59" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">no</text>
+<polyline points="850,65 890,65" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="870" y="59" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">ok</text>
+<polyline points="315,90 315,130 105,130 105,90" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<text x="210" y="146" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">yes: skip (circuit_skips)</text>
+<polyline points="525,90 525,130 315,130" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<text x="440" y="146" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">yes: skip</text>
+<polyline points="750,90 750,180 105,180 105,90" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<text x="430" y="196" font-size="10.5" font-weight="normal" fill="#C62828" text-anchor="middle">error or timeout: next rung</text>
+<rect x="20" y="220" width="330" height="78" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="30" y="240" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Every rung failed</text>
+<text x="30" y="255.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">any failure retryable (timeout, 429, 5xx, dropped)?</text>
+<polyline points="105,180 105,220" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<rect x="400" y="220" width="300" height="78" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
+<text x="410" y="240" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Retry the whole chain</text>
+<text x="410" y="255.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">once (retry_attempts 1), after jittered</text>
+<text x="410" y="267.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">backoff from 0.5 s</text>
+<rect x="750" y="220" width="290" height="78" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="760" y="240" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Answer the caller</text>
+<text x="760" y="255.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">429 if every rung was throttled</text>
+<text x="760" y="267.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">otherwise 502 naming each rung</text>
+<polyline points="350,250 400,250" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="375" y="244" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">yes</text>
+<polyline points="350,280 370,280 370,320 895,320 895,298" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<text x="630" y="336" font-size="10.5" font-weight="normal" fill="#C62828" text-anchor="middle">no, or retries used</text>
+<polyline points="700,259 720,259 720,120 20,120 20,90" fill="none" stroke="#5F6673" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-muted)"/>
+<text x="20" y="380" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">Circuit breaker per (provider, model)  (gateway/resilience.py)</text>
+<rect x="20" y="400" width="190" height="66" rx="7" fill="#E8F5E3" stroke="#3C8D2F" stroke-width="1.4"/>
+<text x="115.0" y="431.75" font-size="15" font-weight="bold" fill="#1F2430" text-anchor="middle">CLOSED</text>
+<text x="115.0" y="449.25" font-size="12.5" font-weight="normal" fill="#5F6673" text-anchor="middle">calls flow</text>
+<rect x="420" y="400" width="190" height="66" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
+<text x="515.0" y="431.75" font-size="15" font-weight="bold" fill="#1F2430" text-anchor="middle">OPEN</text>
+<text x="515.0" y="449.25" font-size="12.5" font-weight="normal" fill="#5F6673" text-anchor="middle">rung skipped, no call</text>
+<rect x="820" y="400" width="220" height="66" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
+<text x="930.0" y="431.75" font-size="15" font-weight="bold" fill="#1F2430" text-anchor="middle">HALF-OPEN</text>
+<text x="930.0" y="449.25" font-size="12.5" font-weight="normal" fill="#5F6673" text-anchor="middle">one trial call, others skip</text>
+<polyline points="210,420 420,420" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="315" y="412" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">5 transient failures in a row</text>
+<polyline points="610,420 820,420" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="715" y="412" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">after 30 s</text>
+<polyline points="820,450 610,450" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<text x="715" y="466" font-size="10.5" font-weight="normal" fill="#C62828" text-anchor="middle">trial fails</text>
+<polyline points="930,466 930,510 115,510 115,466" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
+<text x="520" y="504" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">trial succeeds</text>
+<text x="20" y="545" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">A 429 means the provider is up: it fails the rung but never counts toward the breaker. Provider SDKs run with</text>
+<text x="20" y="561" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">max_retries=0, so the router is the only retry layer. Settings: gateway.request_timeout_seconds, retry_*, breaker_*.</text>
+<circle cx="225" cy="40" r="11" fill="#1F2430"/>
+<text x="225" y="44.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">1</text>
+<circle cx="435" cy="40" r="11" fill="#1F2430"/>
+<text x="435" y="44.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">2</text>
+<circle cx="645" cy="40" r="11" fill="#1F2430"/>
+<text x="645" y="44.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">3</text>
+<circle cx="15" cy="220" r="11" fill="#1F2430"/>
+<text x="15" y="224.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">4</text>
+<circle cx="395" cy="220" r="11" fill="#1F2430"/>
+<text x="395" y="224.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">5</text>
+<circle cx="15" cy="400" r="11" fill="#1F2430"/>
+<text x="15" y="404.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">6</text>
+</svg>
