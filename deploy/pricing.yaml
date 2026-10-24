@@ -42,9 +42,11 @@ models:
   gemini-2.5-flash:
     input: 0.30
     output: 2.50
-  gemini-2.5-pro:
-    input: 1.25
-    output: 10.00
+  # Prompts up to 200k tokens; Google charges 2x input / 1.5x output above
+  # that, which this flat table does not model (no chain sends prompts that long).
+  gemini-3.1-pro-preview:
+    input: 2.00
+    output: 12.00
 
   # Embedding models bill input only; `output` stays 0 so a stray completion
   # count cannot invent a charge that the provider would never raise.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 
 REQUESTS = Counter(
     "air_model_gateway_requests_total", "HTTP requests", ["route", "method", "status"]
@@ -23,10 +23,54 @@ PROVIDER_TIMEOUTS = Counter(
     "Provider calls abandoned at the gateway timeout",
     ["provider"],
 )
+CHAIN_RETRIES = Counter(
+    "air_model_gateway_chain_retries_total",
+    "Extra passes over a failover chain after every rung failed transiently",
+    ["primary_provider"],
+)
+CIRCUIT_SKIPS = Counter(
+    "air_model_gateway_circuit_skips_total",
+    "Rungs skipped without a call because their circuit breaker was open",
+    ["provider", "model"],
+)
+CIRCUIT_OPEN = Gauge(
+    "air_model_gateway_circuit_open",
+    "1 while a (provider, model) circuit breaker is open on this replica",
+    ["provider", "model"],
+)
+REDIS_ERRORS = Counter(
+    "air_model_gateway_redis_errors_total",
+    "Redis operations that failed and fell back to degraded behaviour",
+    ["operation"],
+)
 RATELIMITED = Counter(
     "air_model_gateway_ratelimited_total",
     "Requests rejected by the rate limiter",
     ["service", "resource"],
+)
+
+
+SERVICE_COST = Counter(
+    "air_model_gateway_service_cost_usd_total",
+    "Model cost in USD by calling service",
+    ["service"],
+)
+QUOTA_REJECTED = Counter(
+    "air_model_gateway_provider_quota_rejected_total",
+    "Rungs skipped because the deployment's quota for the provider was spent",
+    ["provider"],
+)
+BUDGET_REJECTED = Counter(
+    "air_model_gateway_budget_rejected_total",
+    "Requests refused because the service's daily budget was spent",
+    ["service"],
+)
+
+
+STREAMS = Counter(
+    "air_model_gateway_streams_total",
+    "Streamed /v1/generate calls by how they ended: completed, error, client_disconnected",
+    ["outcome"],
 )
 
 

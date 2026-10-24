@@ -1,0 +1,14 @@
+# Local Prometheus for air-model-gateway (`make up-observability`), scraping only
+# the gateway. In shared environments the platform's own Prometheus scrapes
+# /metrics instead; this file is a local convenience.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: air-model-gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["air-model-gateway:8080"]
+        labels:
+          service: air-model-gateway

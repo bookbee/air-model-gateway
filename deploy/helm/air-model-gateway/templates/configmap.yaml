@@ -1,0 +1,23 @@
+{{- if include "amg.hasConfig" . }}
+# DevOps-owned config from deploy/ (routing, pricing, policy), passed with
+# --set-file. Rendered only for the files given; the rest come from the image.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "amg.fullname" . }}-config
+  labels:
+    {{- include "amg.labels" . | nindent 4 }}
+data:
+  {{- with .Values.config.routing }}
+  routing.yaml: |
+    {{- . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.config.pricing }}
+  pricing.yaml: |
+    {{- . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.config.policy }}
+  policy.yaml: |
+    {{- . | nindent 4 }}
+  {{- end }}
+{{- end }}

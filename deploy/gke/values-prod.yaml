@@ -1,0 +1,43 @@
+# Production on GKE. Layered on deploy/helm/air-model-gateway/values.yaml.
+#
+# Placeholders in <angle brackets> come from `terraform output` in
+# deploy/terraform/environments/prod. The image is set by CI (or `make gke-render
+# IMAGE=...`), not here. Routing, pricing and policy come from deploy/ via
+# --set-file (see the Makefile's gke-* targets).
+
+environment: prod
+
+image:
+  repository: <region>-docker.pkg.dev/<project>/air/air-model-gateway
+
+modelServers:
+  # The model-server deployments' own internal addresses. They are owned
+  # separately; the gateway only needs to reach them.
+  ollamaBaseUrl: http://ollama.air-model-servers.svc.cluster.local:11434
+  selfHostedBaseUrl: http://llama-cpp.air-model-servers.svc.cluster.local:8181/v1
+
+redis:
+  keyPrefix: "air-model-gateway:"
+  tls:
+    enabled: true
+    gcpSecret: air-model-gateway-redis-ca
+
+secrets:
+  mode: gcpSecretManager
+  gcp:
+    project: <project>
+
+autoscaling:
+  minReplicas: 3
+  maxReplicas: 10
+
+networkPolicy:
+  # The five consumers' namespaces. Labelling a namespace with
+  # air-platform/model-gateway-client=true works too; listing them here makes
+  # the allow list reviewable in one place.
+  allowedNamespaces:
+    - air-classifier-service
+    - air-orchestrator-service
+    - air-web-console
+    - air-tools
+    - air-rag

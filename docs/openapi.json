@@ -1,0 +1,1463 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "air-model-gateway",
+    "description": "The AIR platform's model gateway, across Ollama, Anthropic, OpenAI, Gemini and a\nself-hosted slot: `POST /v1/generate` for text (optionally structured JSON) and\n`POST /v1/embed` for vectors. Choose a model class (`local`, `auto`, `cloud`) or a\npublished embedding model; the gateway picks the models and handles failover, retries,\ncost accounting and caching.\n\n**Streaming.** `stream: true` on `/v1/generate` answers with Server-Sent Events:\n`start`, `delta`s, then `done` or `error`. The gateway fails over between models only\nbefore the first token; errors before then are ordinary HTTP errors.\n\n**Authentication.** Every `/v1` call except health and readiness carries the calling\nservice's token in `X-API-Key`. Each service is granted specific operations\n(`generate`, `embed`); anything else is 403.\n\n**Stateless.** The gateway keeps no conversation: send the whole history on every\n`/v1/generate` call. Unknown fields are 422.\n\n**Errors.** Every error body is `application/problem+json` (RFC 9457) with a stable\n`code` and the `request_id`. Retry only 429 `rate_limited`, 502 and 503, with backoff;\nnever 429 `budget_exceeded`.\n\n**Tracing.** Send `X-Request-ID` (up to 128 of `A-Z a-z 0-9 . _ : -`) to have it\nlogged with the call and echoed back; without one, or with any other value, the\ngateway generates it.\n\nThe consumer guide is docs/04-integration.md in the air-model-gateway repo.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/generate": {
+      "post": {
+        "tags": [
+          "generate"
+        ],
+        "summary": "Generate text (optionally structured JSON, optionally streamed) from a model class",
+        "description": "Messages in, one answer out: chat, classification, summaries, extraction.\nWith `stream: true`, the answer arrives as Server-Sent Events.",
+        "operationId": "generate_v1_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Without `stream`: the answer as JSON (GenerateOutput). With `stream: true`: Server-Sent Events, each `event: <name>` plus one `data:` line of JSON: one `start` (StreamStart), then `delta` events (StreamDelta) whose `content` concatenates to the answer, then `done` (GenerateSummary) or, if the stream fails after it started, `error` (Problem).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateOutput"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or unknown `X-API-Key` (`code: unauthorized`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "403": {
+            "description": "`code: policy_denied`: the calling service has no grant for this operation, or chose a model class, embedding model or preferred provider outside its grant, or sent `pin` without a pin grant (needed outside local). Don't retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "422": {
+            "description": "`code: validation_error`: the body failed validation; `detail` lists each `field: message`. `code: invalid_model_choice`: a choice that means nothing here (an unpublished embedding model, a provider the class doesn't offer, a malformed pin). Don't retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "429": {
+            "description": "`code: rate_limited`: the service's own rate limit, or every rung of the chain was throttled (by a provider or the gateway's provider quota). Retry with backoff. `code: budget_exceeded`: the service's daily budget is spent; don't retry before `Retry-After` (the next UTC day).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "502": {
+            "description": "Every rung of the model's chain failed (`code: provider_unavailable`); `detail` names each. Retry with backoff.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "description": "Optional. Correlates this call across services and logs. A value that doesn't match the pattern is replaced with a generated id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/embed": {
+      "post": {
+        "tags": [
+          "embed"
+        ],
+        "summary": "Embed texts with a published embedding model",
+        "description": "Texts in, one vector per text out.",
+        "operationId": "embed_v1_embed_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbedOutput"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or unknown `X-API-Key` (`code: unauthorized`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "403": {
+            "description": "`code: policy_denied`: the calling service has no grant for this operation, or chose a model class, embedding model or preferred provider outside its grant, or sent `pin` without a pin grant (needed outside local). Don't retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "422": {
+            "description": "`code: validation_error`: the body failed validation; `detail` lists each `field: message`. `code: invalid_model_choice`: a choice that means nothing here (an unpublished embedding model, a provider the class doesn't offer, a malformed pin). Don't retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "429": {
+            "description": "`code: rate_limited`: the service's own rate limit, or every rung of the chain was throttled (by a provider or the gateway's provider quota). Retry with backoff. `code: budget_exceeded`: the service's daily budget is spent; don't retry before `Retry-After` (the next UTC day).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "502": {
+            "description": "Every rung of the model's chain failed (`code: provider_unavailable`); `detail` names each. Retry with backoff.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "description": "Optional. Correlates this call across services and logs. A value that doesn't match the pattern is replaced with a generated id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness",
+        "description": "Liveness: the process is up. Never consults a provider.",
+        "operationId": "health_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "description": "Optional. Correlates this call across services and logs. A value that doesn't match the pattern is replaced with a generated id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/ready": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness",
+        "description": "Readiness: should this replica receive traffic?\n\nGated on whether at least one provider is reachable: \"no provider answers\"\nis the one condition under which this replica genuinely cannot serve.\n\nRedis is reported but never gates. Without it the cache misses and rate\nlimits fall back to per replica, so the replica still serves correctly,\nand pulling every replica out of rotation over a Redis blip would turn a\ndegraded cache into a full outage.",
+        "operationId": "ready_v1_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "503": {
+            "description": "No provider answers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "description": "Optional. Correlates this call across services and logs. A value that doesn't match the pattern is replaced with a generated id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Version, environment, providers, and the model choices open to you",
+        "operationId": "capabilities_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or unknown `X-API-Key` (`code: unauthorized`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "description": "Optional. Correlates this call across services and logs. A value that doesn't match the pattern is replaced with a generated id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/admin/policy": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "The effective policy (needs the admin_read grant)",
+        "operationId": "dump_policy_v1_admin_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyDoc"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or unknown `X-API-Key` (`code: unauthorized`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          },
+          "403": {
+            "description": "`code: policy_denied`: the calling service has no grant for this operation, or chose a model class, embedding model or preferred provider outside its grant, or sent `pin` without a pin grant (needed outside local). Don't retry.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/X-Request-ID"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ServiceToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "description": "Optional. Correlates this call across services and logs. A value that doesn't match the pattern is replaced with a generated id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Action": {
+        "type": "string",
+        "enum": [
+          "generate",
+          "embed",
+          "admin_read"
+        ],
+        "title": "Action",
+        "description": "Policy actions. GENERATE and EMBED are named after the routes they guard\n(POST /v1/generate, POST /v1/embed), so a grant reads the same as the call\nit allows: one vocabulary across routes, policy files, metrics and the\naudit line."
+      },
+      "Capabilities": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "local",
+              "staging",
+              "prod"
+            ],
+            "title": "Environment"
+          },
+          "providers": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Providers",
+            "description": "Provider name -> configured here."
+          },
+          "generate": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerateClass"
+            },
+            "type": "object",
+            "title": "Generate",
+            "description": "POST /v1/generate classes (`auto` is the default)."
+          },
+          "preferred_providers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Providers",
+            "description": "Providers you may name in `provider`; null means any the class offers."
+          },
+          "may_pin": {
+            "type": "boolean",
+            "title": "May Pin",
+            "description": "Whether you may send `pin` (an exact provider:model)."
+          },
+          "embed": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EmbedModelInfo"
+            },
+            "type": "object",
+            "title": "Embed",
+            "description": "POST /v1/embed published names."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "environment",
+          "providers",
+          "generate",
+          "preferred_providers",
+          "may_pin",
+          "embed"
+        ],
+        "title": "Capabilities",
+        "description": "What the calling service can ask for: the discovery endpoint for model\nchoices. Chains reflect the owner's configuration, including any\nper-service tuning, and may change; the class and embedding names don't."
+      },
+      "EmbedInput": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^(local|cloud)-([1-9][0-9]*)-v([1-9][0-9]*)$",
+            "title": "Model",
+            "description": "A published embedding model, `<local|cloud>-<dimensions>-v<version>`, e.g. `local-768-v1`. Required: it is your index's identity. A name never changes meaning, so vectors from it always stay comparable; `/v1/capabilities` lists the published names."
+          },
+          "input": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Input",
+            "description": "The texts to embed; one vector comes back per text."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "title": "EmbedInput",
+        "examples": [
+          {
+            "input": [
+              "hello",
+              "world"
+            ],
+            "model": "local-768-v1"
+          }
+        ]
+      },
+      "EmbedModelInfo": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed",
+            "description": "Whether your service may use this embedding model."
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "dimensions": {
+            "type": "integer",
+            "title": "Dimensions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed",
+          "provider",
+          "model",
+          "dimensions"
+        ],
+        "title": "EmbedModelInfo"
+      },
+      "EmbedOutput": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Gateway-assigned id."
+          },
+          "embedding_model": {
+            "type": "string",
+            "title": "Embedding Model",
+            "description": "The published name the vectors belong to."
+          },
+          "dimensions": {
+            "type": "integer",
+            "title": "Dimensions",
+            "description": "Length of every vector; check it against your index."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The provider's model behind that name."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider",
+            "description": "The provider that answered."
+          },
+          "embeddings": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Embeddings",
+            "description": "One vector per input text, in order."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd",
+            "description": "Priced from the gateway's table; 0 for local models.",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "embedding_model",
+          "dimensions",
+          "model",
+          "provider",
+          "embeddings",
+          "usage"
+        ],
+        "title": "EmbedOutput"
+      },
+      "GenerateClass": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed",
+            "description": "Whether your service may use this class."
+          },
+          "chain": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Chain",
+            "description": "The models behind it for your service, in the order tried (provider:model)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed",
+          "chain"
+        ],
+        "title": "GenerateClass"
+      },
+      "GenerateInput": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelClass",
+            "description": "Where the model runs, not which model: `local` (our own servers; the prompt never leaves the network), `cloud` (cloud providers), or `auto` (the gateway's choice, which may be either). The gateway owner decides which models serve each class; `/v1/capabilities` shows them for your service.",
+            "default": "auto"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Provider"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional preference within the class: that provider's models are tried first, the rest stay as fallback. Must be one the class offers (422 otherwise), and one your service may prefer (403 otherwise)."
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(ollama|anthropic|openai|gemini|llama\\.cpp):.+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin",
+            "description": "Operator tools only: an exact `provider:model` (e.g. `anthropic:claude-haiku-4-5`), bypassing the classes, with no fallback. Needs a `pin` grant outside local. When set, `model` and `provider` must be unset."
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Messages",
+            "description": "The whole conversation, oldest first. The gateway keeps no history: the caller sends every turn it wants the model to see, on every call."
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens",
+            "description": "Output token cap, at least 1. Thinking models (Gemini) spend part of it before the visible answer; leave room (300+ for structured output)."
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "0-2. Provider default when omitted. Ignored by Anthropic, whose API version `2026-10-21` rejects sampling parameters."
+          },
+          "json_schema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Json Schema",
+            "description": "A JSON Schema the answer must follow; `content` is then a JSON string. Validate it on your side: the gateway forwards the schema, it doesn't check the answer."
+          },
+          "schema_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Name",
+            "description": "A name for `json_schema` (some providers require one)."
+          },
+          "cache_prefix": {
+            "type": "boolean",
+            "title": "Cache Prefix",
+            "description": "Ask the provider to cache the stable prompt prefix, if supported: the system prompt and, in a conversation (once there is an assistant turn), the history, so each new turn re-reads earlier ones at the cache rate.",
+            "default": true
+          },
+          "stream": {
+            "type": "boolean",
+            "title": "Stream",
+            "description": "Stream the answer as Server-Sent Events (`text/event-stream`): `start`, then `delta` events with text as it is generated, then `done` (GenerateSummary) or `error` (Problem). Errors before the first token are ordinary HTTP errors.",
+            "default": false
+          },
+          "cache": {
+            "type": "boolean",
+            "title": "Cache",
+            "description": "Use the gateway's response cache: an identical request from this service within the cache TTL gets the stored answer at no cost. `false` always asks the provider (e.g. for a fresh sample of a creative answer).",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "title": "GenerateInput",
+        "examples": [
+          {
+            "max_tokens": 50,
+            "messages": [
+              {
+                "content": "Say hi",
+                "role": "user"
+              }
+            ]
+          },
+          {
+            "messages": [
+              {
+                "content": "Summarize: ...",
+                "role": "user"
+              }
+            ],
+            "model": "local"
+          },
+          {
+            "json_schema": {
+              "properties": {
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "type": "object"
+            },
+            "max_tokens": 300,
+            "messages": [
+              {
+                "content": "Classify sentiment: I love this product!",
+                "role": "user"
+              }
+            ],
+            "model": "cloud",
+            "provider": "anthropic",
+            "schema_name": "sentiment"
+          }
+        ]
+      },
+      "GenerateOutput": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Gateway-assigned id; a cache hit returns the original call's id."
+          },
+          "model_class": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelClass"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The class that served the call; null when it was pinned."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The concrete model that answered, after resolving the class and failover."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider",
+            "description": "The provider that answered."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd",
+            "description": "Priced from the gateway's table; 0 for local models and cache hits.",
+            "default": 0.0
+          },
+          "cached": {
+            "type": "boolean",
+            "title": "Cached",
+            "description": "Served from the gateway's response cache.",
+            "default": false
+          },
+          "refusal": {
+            "type": "boolean",
+            "title": "Refusal",
+            "description": "The provider's safety layer declined; never cached.",
+            "default": false
+          },
+          "finish_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "stop",
+                  "length",
+                  "refusal",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish Reason",
+            "description": "Normalized across providers: `stop` (finished), `length` (cut off at `max_tokens`: treat structured output as invalid; never cached), `refusal`, or `other`."
+          },
+          "provider_finish_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Finish Reason",
+            "description": "The provider's own finish reason, unmapped (for diagnostics only)."
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "The answer (a JSON string when `json_schema` was sent).",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "model_class",
+          "model",
+          "provider",
+          "usage"
+        ],
+        "title": "GenerateOutput"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Health"
+      },
+      "Message": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "description": "`system`, `user` or `assistant`."
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "Message"
+      },
+      "ModelClass": {
+        "description": "What a caller of POST /v1/generate chooses instead of a model: where the\nmodel runs. The owner decides, in deploy/routing.yaml, which models serve\neach class (per service, if needed).",
+        "enum": [
+          "local",
+          "auto",
+          "cloud"
+        ],
+        "title": "ModelClass",
+        "type": "string"
+      },
+      "PolicyDoc": {
+        "properties": {
+          "default_allow": {
+            "type": "boolean",
+            "title": "Default Allow",
+            "default": false
+          },
+          "default_rate_per_minute": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Default Rate Per Minute",
+            "default": 120
+          },
+          "provider_quotas": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Provider"
+            },
+            "type": "object",
+            "title": "Provider Quotas"
+          },
+          "services": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ServicePolicy"
+            },
+            "type": "object",
+            "title": "Services"
+          }
+        },
+        "type": "object",
+        "title": "PolicyDoc"
+      },
+      "Problem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "code"
+        ],
+        "title": "Problem",
+        "description": "RFC 9457 problem detail."
+      },
+      "Provider": {
+        "enum": [
+          "ollama",
+          "anthropic",
+          "openai",
+          "gemini",
+          "llama.cpp"
+        ],
+        "title": "Provider",
+        "type": "string"
+      },
+      "Readiness": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "providers": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Providers",
+            "description": "Provider name -> answered its health check."
+          },
+          "redis": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis",
+            "description": "Present only when Redis is configured. Reported, never gates readiness."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "providers"
+        ],
+        "title": "Readiness"
+      },
+      "ServicePolicy": {
+        "properties": {
+          "resources": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/Action"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Resources"
+          },
+          "rate_per_minute": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Per Minute"
+          },
+          "model_classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ModelClass"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Classes"
+          },
+          "embed_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embed Models"
+          },
+          "preferred_providers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Provider"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Providers"
+          },
+          "pin": {
+            "type": "boolean",
+            "title": "Pin",
+            "default": false
+          },
+          "daily_budget_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Budget Usd"
+          }
+        },
+        "type": "object",
+        "title": "ServicePolicy"
+      },
+      "Usage": {
+        "description": "Token counts as the provider reports them. For embeddings, total_tokens\nequals prompt_tokens (there is no completion).",
+        "properties": {
+          "prompt_tokens": {
+            "default": 0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "default": 0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "default": 0,
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "cache_read_tokens": {
+            "default": 0,
+            "title": "Cache Read Tokens",
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "default": 0,
+            "title": "Cache Write Tokens",
+            "type": "integer"
+          }
+        },
+        "title": "Usage",
+        "type": "object"
+      },
+      "StreamStart": {
+        "description": "The first event of a stream: which model answers (failover is over).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "description": "The concrete model streaming the answer.",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          },
+          "cached": {
+            "description": "A cache hit, replayed as one `delta`.",
+            "title": "Cached",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "provider",
+          "cached"
+        ],
+        "title": "StreamStart",
+        "type": "object"
+      },
+      "StreamDelta": {
+        "description": "A slice of the answer; concatenate every `delta`'s `content` in order.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "StreamDelta",
+        "type": "object"
+      },
+      "GenerateSummary": {
+        "description": "Everything about an answer except its text: the body of /v1/generate's\nresponse (GenerateOutput adds `content`), and of a stream's `done` event.",
+        "properties": {
+          "id": {
+            "description": "Gateway-assigned id; a cache hit returns the original call's id.",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_class": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelClass"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The class that served the call; null when it was pinned."
+          },
+          "model": {
+            "description": "The concrete model that answered, after resolving the class and failover.",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider",
+            "description": "The provider that answered."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "cost_usd": {
+            "default": 0.0,
+            "description": "Priced from the gateway's table; 0 for local models and cache hits.",
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "cached": {
+            "default": false,
+            "description": "Served from the gateway's response cache.",
+            "title": "Cached",
+            "type": "boolean"
+          },
+          "refusal": {
+            "default": false,
+            "description": "The provider's safety layer declined; never cached.",
+            "title": "Refusal",
+            "type": "boolean"
+          },
+          "finish_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "stop",
+                  "length",
+                  "refusal",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Normalized across providers: `stop` (finished), `length` (cut off at `max_tokens`: treat structured output as invalid; never cached), `refusal`, or `other`.",
+            "title": "Finish Reason"
+          },
+          "provider_finish_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The provider's own finish reason, unmapped (for diagnostics only).",
+            "title": "Provider Finish Reason"
+          }
+        },
+        "required": [
+          "id",
+          "model_class",
+          "model",
+          "provider",
+          "usage"
+        ],
+        "title": "GenerateSummary",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "ServiceToken": {
+        "type": "apiKey",
+        "description": "The calling service's token, issued per service and environment.",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    },
+    "headers": {
+      "X-Request-ID": {
+        "description": "The request's id: the caller's `X-Request-ID`, or a generated one.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "generate",
+      "description": "Text generation, optionally structured."
+    },
+    {
+      "name": "embed",
+      "description": "Embeddings."
+    },
+    {
+      "name": "system",
+      "description": "Liveness, readiness and capabilities."
+    },
+    {
+      "name": "admin",
+      "description": "Read-only operator views."
+    }
+  ]
+}

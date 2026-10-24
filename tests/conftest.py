@@ -13,7 +13,7 @@ from air_model_gateway.main import create_app
 def settings() -> Settings:
     return Settings(
         security=SecuritySettings(
-            service_tokens={"t-sent": "air-classifier", "t-client": "air-client"}
+            service_tokens={"t-sent": "air-classifier-service", "t-client": "air-web-console"}
         ),
         policy=PolicySettings(config_path="deploy/policy/policy.local.yaml"),
     )

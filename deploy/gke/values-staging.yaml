@@ -1,0 +1,39 @@
+# Staging on GKE. Same shape as production, smaller. Layered on
+# deploy/helm/air-model-gateway/values.yaml.
+#
+# Placeholders in <angle brackets> come from `terraform output` in
+# deploy/terraform/environments/staging. The image is set by CI.
+
+environment: staging
+
+image:
+  repository: <region>-docker.pkg.dev/<project>/air/air-model-gateway
+
+modelServers:
+  ollamaBaseUrl: http://ollama.air-model-servers.svc.cluster.local:11434
+  selfHostedBaseUrl: http://llama-cpp.air-model-servers.svc.cluster.local:8181/v1
+
+redis:
+  # Own prefix, so staging can share an instance with another environment
+  # without sharing cache entries or rate-limit buckets.
+  keyPrefix: "air-model-gateway-staging:"
+  tls:
+    enabled: true
+    gcpSecret: air-model-gateway-redis-ca
+
+secrets:
+  mode: gcpSecretManager
+  gcp:
+    project: <project>
+
+autoscaling:
+  minReplicas: 2
+  maxReplicas: 4
+
+networkPolicy:
+  allowedNamespaces:
+    - air-classifier-service
+    - air-orchestrator-service
+    - air-web-console
+    - air-tools
+    - air-rag

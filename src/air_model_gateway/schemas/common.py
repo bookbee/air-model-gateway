@@ -4,17 +4,12 @@ from pydantic import BaseModel
 
 
 class Principal(BaseModel):
-    """The authenticated caller. `service` is the v1 unit of authorization;
-    `tenant` is carried now so quotas/audit can split per-tenant later."""
+    """The authenticated caller. `service` is the unit of authorization, rate
+    limits, budgets and cache scope; `token_id` is a non-reversible id of the
+    token used (security/apikeys.py::token_id)."""
 
     service: str
-    tenant: str | None = None
     token_id: str | None = None
-
-
-class RequestContext(BaseModel):
-    request_id: str
-    principal: Principal | None = None
 
 
 class Problem(BaseModel):

@@ -1,23 +1,38 @@
-"""The internal chat/embeddings contract that the router and provider adapters
-speak — ported unchanged from air-infra's gateway. The public wire contract is
-``schemas/inference.py``'s ``InferenceRequest``/``InferenceResponse``, which the
-API layer translates to/from these before touching the router."""
+"""The internal contract the router and provider adapters speak.
+
+Named after the provider APIs it maps onto: ``ChatRequest`` is a call to a
+provider's chat API (POST /v1/generate), ``EmbeddingsRequest`` to its embeddings
+API (POST /v1/embed). The public wire contracts are schemas/generate.py and
+schemas/embed.py; api/v1/model_calls.py translates between the two layers, so
+either can change without the other."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from air_model_gateway.constants import Provider
 
 
 class Message(BaseModel):
-    role: str
+    # extra="forbid": fields from other APIs' message shapes (`name`,
+    # `tool_call_id`, `tool_calls`) are the caller's 422, not silently dropped.
+    model_config = ConfigDict(extra="forbid")
+
+    # A Literal, not a free string: an unknown role was silently dropped by the
+    # Anthropic adapter (a 400 "at least one message is required" surfacing as
+    # a 502) and passed through to Ollama, which answered as if it were absent.
+    role: Literal["system", "user", "assistant"] = Field(
+        description="`system`, `user` or `assistant`."
+    )
     content: str
 
 
 class Usage(BaseModel):
+    """Token counts as the provider reports them. For embeddings, total_tokens
+    equals prompt_tokens (there is no completion)."""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -28,7 +43,9 @@ class Usage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    model: str | None = None  # alias; None -> gateway default
+    """One chat call. Which model runs it is the router's chain, not part of
+    the request: the same request may be tried on several models."""
+
     messages: list[Message]
     max_tokens: int | None = None
     temperature: float | None = None
@@ -54,15 +71,4 @@ class ChatResponse(BaseModel):
 
 
 class EmbeddingsRequest(BaseModel):
-    model: str | None = None
     input: list[str] = Field(min_length=1)
-
-
-class EmbeddingsResponse(BaseModel):
-    id: str
-    model: str
-    provider: Provider
-    embeddings: list[list[float]]
-    usage: Usage
-    cost_usd: float = 0.0
-    cached: bool = False

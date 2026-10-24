@@ -1,0 +1,14 @@
+# Local stand-in for the GKE cluster (`make kind-up`): one control plane and
+# two workers in different "zones", so the chart's zone spread, PDB and
+# NetworkPolicy behave as they do on GKE. kindnet enforces NetworkPolicy.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: air-model-gateway
+nodes:
+  - role: control-plane
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: local-a
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: local-b

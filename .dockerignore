@@ -1,0 +1,14 @@
+# Allowlist: the build context is only what the image needs. Everything else,
+# including generated secrets (deploy/local/integration/secrets, tokens.env,
+# deploy/local/kind/.state), .env, .venv, .git and Terraform state, never
+# reaches the Docker daemon, so it can't be copied into an image by mistake.
+# tests/test_repo_consistency.py pins this shape.
+*
+!pyproject.toml
+!README.md
+!requirements.lock
+!src/
+!deploy/routing.yaml
+!deploy/pricing.yaml
+!deploy/policy/
+**/__pycache__

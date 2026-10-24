@@ -1,38 +1,32 @@
-# Model routing table: alias -> ordered failover chain.
+# What each model choice a caller can make means, in concrete models.
 #
-# Loaded by air_model_gateway.gateway.router at boot. This is DevOps-owned configuration,
-# not code: adding a model, reordering a chain, or pointing an alias at a new
-# provider is an edit here plus a restart, never a release of air-model-gateway.
+# Loaded at boot (schemas/gateway.py::RoutingDoc, gateway/models.py). This is
+# owner-managed configuration, not code: changing which models serve a class,
+# reordering a chain, or tuning one service is an edit here plus a redeploy,
+# never a release. Who may use which class, embedding model or provider is in
+# deploy/policy/policy.<env>.yaml.
 #
-# A caller asks for an alias ("fast") and gets the first entry that answers; on a
-# provider error the router walks to the next. A caller may also bypass aliases
-# entirely with "provider:model" (e.g. "anthropic:claude-haiku-4-5").
+# Callers choose by class, never by model name:
+#   POST /v1/generate  model: local | auto | cloud   (default auto)
+#                      provider: optional preference (moved to the front of the
+#                      chain; the rest stay as fallback)
+#   POST /v1/embed     model: a published embedding name, e.g. local-768-v1
+# A chain is tried in order; on a provider error the router walks to the next.
 #
-# Every provider named here must be one air-model-gateway knows how to build (ollama,
-# anthropic, openai, gemini, llama.cpp). An unregistered provider is skipped
-# with a logged reason rather than failing the boot, so a chain stays useful
-# when only some keys are set. `llama.cpp` is the *label* for whatever's
-# behind the one self-hosted settings slot (AIR_MODEL_GATEWAY_SELF_HOSTED__BASE_URL) —
-# today that's llama.cpp's `llama-server` (`make llamacpp-up`), any
-# OpenAI-wire-compatible backend works there (LM Studio proved that first;
-# vLLM/TGI are the real UAT/Prod candidates). If what's actually running in
-# that slot changes, this label should be renamed to match — it names the
-# concrete backend, the way `ollama` does, not a generic category.
+# Every provider named here must be one air-model-gateway can build (ollama,
+# anthropic, openai, gemini, llama.cpp). `llama.cpp` is the label for whatever
+# is behind the one self-hosted settings slot (AIR_MODEL_GATEWAY_SELF_HOSTED__BASE_URL):
+# today llama.cpp's `llama-server` (`make llamacpp-up`); vLLM/TGI in shared
+# environments. If what runs there changes, rename the label to match.
 
-aliases:
-  # Local-only, deliberately — no cloud rung. Three rungs, but only two
-  # failure domains: llama and ministral are both served by the same ollama
-  # process, so between those two this covers the narrower case of one model
-  # not being pulled/loaded while the other is — not ollama itself being
-  # down. llama.cpp (a separate process entirely) is what actually survives
-  # ollama being down, which is why it is worth its own rung here rather than
-  # being redundant with the first two. A cloud rung used to sit at the end
-  # of this chain; removed because a "local-first" alias that quietly lands
-  # on cloud the moment every local option is down defeats its own purpose —
-  # the same reasoning classify-local (below) applies. If every local rung is
-  # down, the call should fail visibly, not silently escalate to a place the
-  # caller of `fast` never asked for.
-  fast:
+generate:
+  # Our own model servers only: free, and the prompt never leaves the network.
+  # Three rungs but two failure domains: llama and ministral are both served
+  # by the same ollama process (this covers one model not being loaded), and
+  # llama.cpp is a separate process that survives ollama being down. Never a
+  # cloud rung: `local` is a promise about where data goes, so if every local
+  # model is down the call fails visibly instead of escalating to the cloud.
+  local:
     - provider: ollama
       model: llama3.2:3b
     - provider: ollama
@@ -40,36 +34,11 @@ aliases:
     - provider: llama.cpp
       model: llama-3.2-3b-gguf
 
-  # air-classifier's own aliases, below. Named and owned for that one
-  # consumer rather than shared with `fast`/`smart`/`embed` above: a change
-  # another consumer makes to a shared alias must not silently change
-  # air-classifier's escalation behaviour, and vice versa.
-
-  # Tier 2: exactly one entry, deliberately no failover. air-classifier's own
-  # ladder — not this alias — is what decides whether to reach for Tier 3
-  # when the local rung cannot serve, and it can only make that call
-  # correctly if a local outage actually fails the call rather than air-model-gateway
-  # quietly answering from the cloud under the Tier-2 label.
-  classify-local:
-    - provider: ollama
-      model: llama3.2:3b
-
-  # Tier 3's default call: air-classifier's own escalation ladder already
-  # decided a cheap cloud model is warranted (Tiers 0-2 were not confident
-  # enough), so this chain is cloud-only and starts at the cheap end of it —
-  # unlike `fast`, which is local-only. Cross-vendor so one provider's outage
-  # does not remove Tier 3 outright; air-classifier's own arbitration
-  # (confidence too low even after a clean answer) escalates to
-  # `classify-arbiter` separately and is not this alias's concern.
-  #
-  # Gemini leads here — and in classify-arbiter/smart below — because it's
-  # the provider actually configured with a working key in this environment
-  # right now; Anthropic/OpenAI are the fallback, not a lesser choice. This
-  # is a today-in-this-environment ordering, not a vendor-quality one: once
-  # Anthropic/OpenAI keys are live too (and especially once environments
-  # split their own routing.yaml — see docs/00-plan.md open question 3),
-  # this ordering is worth revisiting rather than assumed to still be right.
-  classify-default:
+  # Cloud models only. Cross-vendor, so one provider's outage doesn't remove the
+  # class. Gemini leads because it is the provider with a working key in this
+  # environment today; Anthropic and OpenAI are the fallback, not a lesser
+  # choice. Revisit the order once all keys are live.
+  cloud:
     - provider: gemini
       model: gemini-2.5-flash
     - provider: anthropic
@@ -77,57 +46,84 @@ aliases:
     - provider: openai
       model: gpt-4o-mini
 
-  # Tier 3's arbitration call — content mirrors `smart` today, but kept as
-  # its own alias rather than pointed at `smart` directly, so a future change
-  # to the shared one for a different consumer's needs cannot silently
-  # change what air-classifier's arbitration means.
-  classify-arbiter:
-    - provider: gemini
-      model: gemini-2.5-pro
-    - provider: anthropic
-      model: claude-sonnet-5
-    - provider: openai
-      model: gpt-4o-mini
-
-  # Quality first; the second entry is a deliberately different vendor so a
-  # single provider outage does not take the alias down with it.
-  smart:
-    - provider: gemini
-      model: gemini-2.5-pro
-    - provider: anthropic
-      model: claude-sonnet-5
-    - provider: openai
-      model: gpt-4o-mini
-
-  # air-platform's answer-synthesis call (`engine/turn.py`'s `TurnEngine`,
-  # Phase 2a) — customer- and business-channel prose, plus the
-  # schema-constrained business-channel `structured` call. Its own alias
-  # rather than pointed at `smart` directly, same reasoning as
-  # classify-arbiter above: a future change to `smart` for a different
-  # consumer must not silently change what a customer-facing answer sounds
-  # like. Leads with `gemini-2.5-flash` rather than `smart`'s `-pro`: `-pro`
-  # is deprecated in this environment as of this writing (confirmed via a
-  # direct `/v1/inference` call — "no longer available to new users"), while
-  # `-flash` is the model `classify-default` already proves working here.
-  # Revisit once `smart`'s own chain is updated, or once Anthropic/OpenAI
-  # keys make the vendor ordering matter less.
-  generative:
+  # The gateway's choice, and the default. Local first (free and private while
+  # the local model is healthy), then cloud as fallback. A caller whose data must
+  # not leave the network asks for `local`, not `auto`.
+  auto:
+    - provider: ollama
+      model: llama3.2:3b
     - provider: gemini
       model: gemini-2.5-flash
     - provider: anthropic
-      model: claude-sonnet-5
+      model: claude-haiku-4-5
     - provider: openai
       model: gpt-4o-mini
 
-  # No llama.cpp rung here: this local instance is loaded with a chat model,
-  # not an embedding one — llama-server serves one or the other per
-  # process/port, not both. Add one back (a second llama-server instance on
-  # its own port, an embedding-capable GGUF) if that's ever stood up; a rung
-  # with nothing behind it is a dead entry, not a documented option.
-  embed:
-    - provider: ollama
-      model: nomic-embed-text
-    - provider: openai
-      model: text-embedding-3-small
-    - provider: gemini
-      model: gemini-embedding-001
+# Embedding models, by permanent name: <local|cloud>-<dimensions>-v<version>.
+# A name never changes meaning once published: vectors from different models
+# can't share an index, so pointing an existing name at another model would
+# silently corrupt every index built with it. To change models, publish a new
+# version (v2) and re-index. Exactly one model per name, never a fallback chain,
+# for the same reason: an embedding outage must fail visibly.
+embed:
+  # air-rag's indexing and query embeddings.
+  local-768-v1:
+    provider: ollama
+    model: nomic-embed-text
+    dimensions: 768
+
+  # Optional cloud space, for a caller that can't depend on local servers. No
+  # llama.cpp equivalent exists: that instance serves a chat model, and
+  # llama-server serves one or the other per process.
+  cloud-1536-v1:
+    provider: openai
+    model: text-embedding-3-small
+    dimensions: 1536
+
+# Per-service tuning of what a class means for that one service. A service not
+# listed here gets the classes above. This keeps each consumer's behaviour its
+# own: tuning one service's models never moves another's.
+overrides:
+  air-classifier-service:
+    generate:
+      # Tier 2 and the summary refresh. Exactly one rung, deliberately: the
+      # classifier's own ladder decides whether to escalate when the local
+      # model can't serve, and it can only do that if a local outage actually
+      # fails the call. A failed summary refresh keeps the prior narrative.
+      local:
+        - provider: ollama
+          model: llama3.2:3b
+      # Tier 3: the classifier has already decided local (Tier 2) wasn't
+      # confident enough, so its `auto` is cloud-only, at the cheap end.
+      auto:
+        - provider: gemini
+          model: gemini-2.5-flash
+        - provider: anthropic
+          model: claude-haiku-4-5
+        - provider: openai
+          model: gpt-4o-mini
+      # Arbitration, when even Tier 3 isn't confident: the strongest models.
+      # gemini-3.1-pro-preview is a *preview* and Google withdraws those; the
+      # Claude rung keeps the class serving, and the GA name replaces it then
+      # (with its row in pricing.yaml).
+      cloud:
+        - provider: gemini
+          model: gemini-3.1-pro-preview
+        - provider: anthropic
+          model: claude-sonnet-5
+        - provider: openai
+          model: gpt-4o-mini
+
+  air-orchestrator-service:
+    generate:
+      # Customer- and business-channel answers (and the structured business
+      # call). Flash leads for latency: a customer-facing turn can't wait the
+      # 5-8 s a Pro model takes. Sonnet second: a customer answer falling back
+      # should not drop to the smallest model.
+      cloud:
+        - provider: gemini
+          model: gemini-2.5-flash
+        - provider: anthropic
+          model: claude-sonnet-5
+        - provider: openai
+          model: gpt-4o-mini

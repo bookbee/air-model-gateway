@@ -1,0 +1,197 @@
+# Defaults for the air-model-gateway chart.
+#
+# They are production-safe on their own (prod environment, fail-closed policy,
+# JSON logs, non-root read-only container, two replicas minimum). Each
+# environment layers one file on top: deploy/gke/values-staging.yaml,
+# deploy/gke/values-prod.yaml, deploy/local/kind/values-kind.yaml. The DevOps-
+# owned config files (routing, pricing, policy) are passed with --set-file so
+# deploy/ stays their single source; see config below and `make gke-render`.
+
+image:
+  # <region>-docker.pkg.dev/<project>/<repository>/air-model-gateway on GKE.
+  repository: air-model-gateway
+  # Defaults to the chart's appVersion. In CI, pass the build's tag or, better,
+  # its digest: a digest can't be re-pointed after review.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# local | staging | prod. Anything but local fails closed on policy.
+environment: prod
+
+# Ignored while autoscaling is enabled.
+replicaCount: 2
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ---- model servers -----------------------------------------------------------
+# The gateway calls model servers; it doesn't host them. Ollama and the
+# self-hosted (llama.cpp / vLLM / TGI) slot are separate deployments with their
+# own owners. Point these at their in-cluster Service or internal LB address.
+# Left empty, the gateway's built-in localhost defaults apply, which inside a
+# pod means "not reachable": those rungs fail fast and the chain moves on.
+modelServers:
+  ollamaBaseUrl: ""
+  # Include the /v1 suffix (OpenAI wire). If the server enforces a token, add
+  # AIR_MODEL_GATEWAY_SELF_HOSTED__API_KEY to secrets.gcp.items.
+  selfHostedBaseUrl: ""
+
+# ---- shared state (Redis / Memorystore) ---------------------------------------
+# The Redis URL carries the AUTH string, so it is a secret
+# (AIR_MODEL_GATEWAY_REDIS__URL under secrets below), never a value here.
+redis:
+  # One prefix per environment, so two environments sharing an instance can't
+  # read each other's cache entries or rate-limit buckets.
+  keyPrefix: "air-model-gateway:"
+  tls:
+    # Memorystore's in-transit encryption uses its own server CA. When enabled,
+    # the CA is mounted at mountPath/ca.pem and the URL's ssl_ca_certs points at
+    # it (deploy/terraform writes that URL for you).
+    enabled: false
+    mountPath: /etc/air-model-gateway/redis-ca
+    # secrets.mode=gcpSecretManager: Secret Manager secret holding the PEM.
+    gcpSecret: ""
+    # secrets.mode=kubernetesSecret: Kubernetes Secret with a `ca.pem` key.
+    kubernetesSecret: ""
+
+# ---- DevOps-owned config -----------------------------------------------------
+# File contents, normally passed with --set-file from deploy/:
+#   --set-file config.routing=deploy/routing.yaml
+#   --set-file config.pricing=deploy/pricing.yaml
+#   --set-file config.policy=deploy/policy/policy.prod.yaml
+# Each one given lands in a ConfigMap; a change rolls the pods (checksum
+# annotation), so a routing edit ships with `helm upgrade`, no image build. An
+# empty one falls back to the copy baked into the image at the path below.
+config:
+  routing: ""
+  pricing: ""
+  policy: ""
+  mountPath: /etc/air-model-gateway/config
+  # Used only when config.policy is empty.
+  imagePolicyPath: deploy/policy/policy.prod.yaml
+
+# Any other non-secret settings, as AIR_MODEL_GATEWAY_* env vars
+# (see .env.example), e.g. AIR_MODEL_GATEWAY_GATEWAY__RETRY_ATTEMPTS: "1".
+env: {}
+
+# ---- secrets -----------------------------------------------------------------
+# Mounted as files named like the env var they stand in for, in
+# AIR_MODEL_GATEWAY_SECRETS_DIR (config.py::_SecretsDirSource). Read at boot:
+# after a rotation, `kubectl rollout restart` the Deployment.
+secrets:
+  # gcpSecretManager  GKE Secret Manager add-on (CSI). Production.
+  # kubernetesSecret  an existing Kubernetes Secret, one key per setting. kind.
+  # none              settings come from env only (tests).
+  mode: gcpSecretManager
+  mountPath: /run/secrets/air-model-gateway
+  gcp:
+    # GCP project holding the secrets (defaults to nothing: required in this mode).
+    project: ""
+    # File name (= setting) -> Secret Manager secret id. A listed secret must
+    # have at least one version or the pod won't start, so leave out providers
+    # you have no key for rather than creating empty secrets.
+    items:
+      AIR_MODEL_GATEWAY_SECURITY__SERVICE_TOKENS: air-model-gateway-service-tokens
+      AIR_MODEL_GATEWAY_REDIS__URL: air-model-gateway-redis-url
+      AIR_MODEL_GATEWAY_PROVIDERS__ANTHROPIC_API_KEY: air-model-gateway-anthropic-api-key
+      AIR_MODEL_GATEWAY_PROVIDERS__GEMINI_API_KEY: air-model-gateway-gemini-api-key
+      AIR_MODEL_GATEWAY_PROVIDERS__OPENAI_API_KEY: air-model-gateway-openai-api-key
+  kubernetesSecret:
+    name: ""
+
+# ---- identity ----------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  # Not needed with direct Workload Identity Federation (deploy/terraform grants
+  # the Kubernetes service account itself). If you impersonate a Google service
+  # account instead: iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
+  annotations: {}
+
+# ---- serving -----------------------------------------------------------------
+service:
+  # In-cluster only: consumers call
+  # http://<release>.<namespace>.svc.cluster.local. There is no Ingress.
+  type: ClusterIP
+  port: 80
+
+containerPort: 8080
+
+# Every pod has a 60s per-attempt deadline per rung (gateway.request_timeout),
+# so an in-flight call can take a while. On SIGTERM: preStop waits for the
+# endpoint removal to propagate, then uvicorn stops accepting and drains for
+# up to gracefulShutdownSeconds. Keep terminationGracePeriodSeconds above
+# preStopSleepSeconds + gracefulShutdownSeconds. A stream (`stream: true`) still
+# running at the end of the drain is cut off: its caller gets a broken stream
+# and should retry. Raise both values if your consumers stream answers longer
+# than about a minute.
+preStopSleepSeconds: 10
+gracefulShutdownSeconds: 70
+terminationGracePeriodSeconds: 90
+
+resources:
+  # Measured 65-85 MiB idle per replica on the local integration stack; the
+  # headroom is for large embedding batches and concurrent calls. Autopilot
+  # bills requests and sets limits equal to them, so keep the two in step.
+  requests:
+    cpu: 500m
+    memory: 512Mi
+    ephemeral-storage: 256Mi
+  limits:
+    memory: 512Mi
+    ephemeral-storage: 256Mi
+
+probes:
+  # /v1/health is liveness only: it never touches a provider, so a provider
+  # outage can't make Kubernetes restart healthy pods.
+  # /v1/ready fails only when *no* provider answers, and never on Redis.
+  startup: {path: /v1/health, periodSeconds: 2, failureThreshold: 30, timeoutSeconds: 2}
+  liveness: {path: /v1/health, periodSeconds: 15, failureThreshold: 3, timeoutSeconds: 3}
+  readiness: {path: /v1/ready, periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 5}
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  # The gateway mostly waits on providers, so CPU rises late. It is the signal
+  # every cluster has; switch to a request-rate metric through Managed
+  # Prometheus once you have a traffic baseline.
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+# Spread replicas across zones, then nodes, so one zone or node going away
+# leaves the gateway serving.
+topologySpread:
+  enabled: true
+
+# ---- network -----------------------------------------------------------------
+networkPolicy:
+  # Ingress only. Pods may receive traffic from consumer namespaces (by name or
+  # label), Managed Prometheus, and this chart's own test pods; nothing else.
+  # Egress isn't restricted: provider APIs are public hostnames, which a plain
+  # NetworkPolicy can't express (see docs/03-deployment.md for FQDN policies).
+  enabled: true
+  allowedNamespaces: []
+  allowedNamespaceLabels:
+    air-platform/model-gateway-client: "true"
+  # GKE Managed Prometheus collectors (Standard and Autopilot namespaces).
+  monitoringNamespaces: [gmp-system, gke-gmp-system]
+
+# ---- observability -----------------------------------------------------------
+monitoring:
+  # Google Cloud Managed Service for Prometheus scrape config (PodMonitoring
+  # CRD, present on GKE when managed collection is on). Off on clusters
+  # without it, such as kind.
+  podMonitoring:
+    enabled: true
+    interval: 30s
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

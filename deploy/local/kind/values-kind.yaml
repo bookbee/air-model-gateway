@@ -1,0 +1,43 @@
+# The production chart on a local kind cluster (`make kind-up`). Only what
+# kind can't provide differs from values-prod.yaml:
+#   - secrets come from a Kubernetes Secret (no Secret Manager CSI driver),
+#   - no Managed Prometheus (no PodMonitoring CRD),
+#   - model servers are the laptop's own Ollama / llama-server,
+#   - Redis is the TLS stand-in in redis-tls.yaml instead of Memorystore.
+# Environment, policy, NetworkPolicy, probes, security context, PDB, HPA and
+# rollout settings are production's.
+
+environment: prod
+
+image:
+  repository: air-model-gateway
+  tag: local
+  pullPolicy: Never
+
+modelServers:
+  ollamaBaseUrl: http://host.docker.internal:11434
+  selfHostedBaseUrl: http://host.docker.internal:8181/v1
+
+redis:
+  keyPrefix: "air-model-gateway-kind:"
+  tls:
+    enabled: true
+    kubernetesSecret: air-model-gateway-redis-ca
+
+secrets:
+  mode: kubernetesSecret
+  kubernetesSecret:
+    name: air-model-gateway-secrets
+
+# Laptop-sized: the requests still apply, just smaller.
+resources:
+  requests: {cpu: 100m, memory: 256Mi, ephemeral-storage: 128Mi}
+  limits: {memory: 512Mi, ephemeral-storage: 256Mi}
+
+autoscaling:
+  minReplicas: 2
+  maxReplicas: 3
+
+monitoring:
+  podMonitoring:
+    enabled: false

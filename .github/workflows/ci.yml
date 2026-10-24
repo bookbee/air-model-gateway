@@ -1,0 +1,61 @@
+name: CI
+
+# The same gates as `make verify` on a laptop (docs/05-handover.md §2): a
+# change is done when every job here is green.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Lint, typecheck, tests with the coverage floor, OpenAPI drift, lock freshness.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.11"
+      - run: make dev
+      - run: make check
+      - run: make lock-check
+      - name: OpenAPI document is current
+        run: make openapi && git diff --exit-code docs/openapi.json
+
+  supply-chain:
+    # Known vulnerabilities in the locked runtime dependencies, script and
+    # Dockerfile lint, and the image itself builds from the lock.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.11"
+      - run: make audit
+      - run: make lint-scripts
+      - run: docker build -t air-model-gateway:ci .
+
+  deploy-config:
+    # Chart lint, schema validation of every environment's manifests, and
+    # Terraform validation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+          terraform_wrapper: false
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+      - run: make gke-validate

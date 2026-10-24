@@ -1,14 +1,16 @@
-# air-model-gateway local stack. Standalone by design: no dependency on air-infra's
-# compose stack, since air-infra never runs in production and air-model-gateway must work
-# the same way in every environment (docs/00-plan.md §1, §4).
+# air-model-gateway local stack. Standalone: it depends on no other AIR stack,
+# because the gateway must run the same way in every environment. (Redis is
+# optional and, locally, borrowed from air-infrastructure-service only when
+# REDIS=infra; see the Makefile.)
 #
 #   base:                    air-model-gateway
 #   --profile ollama:        ollama (see OLLAMA=container|native in the Makefile)
 #   --profile observability: prometheus
 #
 # Host port 8083: the next free slot in the AIR service port block
-# (air-infra/README.md's port map — 8080 air-infra, 8081 air-platform,
-# 8082 air-classifier). air-model-gateway's own port is tracked in README.md here.
+# (air-infrastructure-service/README.md's port map — 8080 air-infrastructure-service,
+# 8081 air-orchestrator-service, 8082 air-classifier-service). air-model-gateway's own
+# port is tracked in README.md here.
 name: air-model-gateway
 
 x-restart: &restart
@@ -41,6 +43,8 @@ services:
       # containerised option the way Ollama has one, so this always goes
       # through host-gateway. Port 8181: llama-server (`make llamacpp-up`).
       AIR_MODEL_GATEWAY_SELF_HOSTED__BASE_URL: http://host.docker.internal:8181/v1
+      # Set by the Makefile from REDIS=none|infra; empty means in-process state.
+      AIR_MODEL_GATEWAY_REDIS__URL: ${AIR_MODEL_GATEWAY_REDIS_URL:-}
     ports: ["8083:8080"]
     networks:
       default:
@@ -49,12 +53,11 @@ services:
     # native mode. An unreachable provider is reported through /v1/capabilities
     # and /v1/ready rather than refusing to boot.
 
-  # ---- inference (profile: ollama) ------------------------------------------
-  # Same container/native choice air-infra's Makefile offers for its own local
-  # ollama — the two are independent copies, not a shared dependency.
+  # ---- model server (profile: ollama) ---------------------------------------
+  # Container option for Ollama, for laptops with no native `ollama serve`.
   #
-  # Version pinned deliberately, not left on a floating tag: air-model-gateway's default
-  # routing alias ("fast") targets llama3.2:3b, and a floating tag would move
+  # Version pinned deliberately, not left on a floating tag: the `local` and
+  # `auto` classes lead with llama3.2:3b (deploy/routing.yaml), and a floating tag would move
   # that runtime's behaviour out from under it without a corresponding change here.
   ollama:
     <<: *restart
@@ -79,7 +82,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=7d
     volumes:
-      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/local/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports: ["9090:9090"]
 

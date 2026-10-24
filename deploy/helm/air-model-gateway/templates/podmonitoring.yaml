@@ -1,0 +1,18 @@
+{{- if .Values.monitoring.podMonitoring.enabled }}
+# Google Cloud Managed Service for Prometheus scrapes /metrics from every
+# replica. Every metric is listed in docs/02-lld.md §11.
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: {{ include "amg.fullname" . }}
+  labels:
+    {{- include "amg.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "amg.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.podMonitoring.interval }}
+{{- end }}

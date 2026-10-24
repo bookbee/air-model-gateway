@@ -39,7 +39,7 @@ DEFAULT_PRICING: Final[PricingDoc] = PricingDoc(
         # Thinking tokens bill at the output rate and the adapter folds them
         # into completion_tokens, so they need no row of their own.
         "gemini-2.5-flash": ModelPrice(input=0.30, output=2.50),
-        "gemini-2.5-pro": ModelPrice(input=1.25, output=10.00),
+        "gemini-3.1-pro-preview": ModelPrice(input=2.00, output=12.00),
         # Embedding models bill input only.
         "text-embedding-3-small": ModelPrice(input=0.02),
         "text-embedding-3-large": ModelPrice(input=0.13),

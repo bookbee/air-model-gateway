@@ -20,11 +20,10 @@ def configure_logging(settings: Settings) -> None:
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
     ]
-    processors.append(
-        structlog.processors.JSONRenderer()
-        if settings.log.render == "json"
-        else structlog.dev.ConsoleRenderer()
-    )
+    if settings.log.render == "json":
+        processors += [add_severity, structlog.processors.JSONRenderer()]
+    else:
+        processors.append(structlog.dev.ConsoleRenderer())
 
     structlog.configure(
         processors=processors,
@@ -32,6 +31,17 @@ def configure_logging(settings: Settings) -> None:
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
+
+def add_severity(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Copy `level` into `severity`, the field Cloud Logging (and most log
+    agents) read a JSON line's severity from. Without it every line from a GKE
+    pod lands as DEFAULT, so an error can't be filtered or alerted on by level.
+    `level` is kept for anyone already querying on it."""
+    level = event_dict.get("level")
+    if isinstance(level, str):
+        event_dict["severity"] = level.upper()
+    return event_dict
 
 
 def get_logger(name: str | None = None) -> Any:

@@ -1,9 +1,6 @@
-"""SelfHostedProvider — the OpenAI-wire-compatible adapter for LM Studio /
-vLLM / TGI. Verified live against a running LM Studio instance (chat
-completions, usage, and embeddings) before this was written; these tests pin
-that behavior with a fake client so a regression doesn't need LM Studio
-running to be caught.
-"""
+"""SelfHostedProvider — the OpenAI-wire-compatible adapter for llama.cpp,
+LM Studio, vLLM and TGI — exercised against a fake client shaped like the
+real servers' responses, so no server needs to be running."""
 
 from __future__ import annotations
 
@@ -73,11 +70,14 @@ def _provider(
     provider = SelfHostedProvider("http://127.0.0.1:1234/v1")
     completions = _FakeCompletions(chat_response if chat_response is not None else _chat_response())
     embeddings = _FakeEmbeddings(embeddings_response)
-    provider._client = SimpleNamespace(
+    client = SimpleNamespace(
         chat=SimpleNamespace(completions=completions),
         embeddings=embeddings,
         models=_FakeModels(healthy=healthy),
+        retry_options=[],
     )
+    client.with_options = lambda **opts: client.retry_options.append(opts) or client
+    provider._client = client
     return provider, completions, embeddings
 
 
@@ -108,7 +108,7 @@ async def test_plain_chat_maps_content_and_usage() -> None:
 
 
 async def test_json_schema_becomes_a_system_instruction_only() -> None:
-    """No response_format kwarg — verified live against LM Studio, which 400s
+    """No response_format kwarg — LM Studio 400s
     on response_format={"type": "json_object"} (it wants "json_schema" or
     "text" specifically) and self-hosted servers disagree on what dialect they
     accept at all. The prompt instruction is the only mechanism relied on."""
@@ -129,12 +129,14 @@ async def test_refusal_field_is_normalized() -> None:
 
 
 async def test_cached_prompt_tokens_are_not_billed_twice() -> None:
-    """Confirmed live against llama.cpp: prompt-cache hits are reported inside
+    """llama.cpp reports prompt-cache hits inside
     prompt_tokens (same convention as OpenAI), not disjoint from it — so they
     must be subtracted back out, same treatment OpenAIProvider already gets."""
     response = _chat_response()
     response.usage = SimpleNamespace(
-        prompt_tokens=82, completion_tokens=6, total_tokens=88,
+        prompt_tokens=82,
+        completion_tokens=6,
+        total_tokens=88,
         prompt_tokens_details=SimpleNamespace(cached_tokens=25),
     )
     provider, _, _ = _provider(response)
@@ -154,6 +156,7 @@ async def test_embeddings_maps_vectors() -> None:
     )
     assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
     assert result.usage.prompt_tokens == 5
+    assert result.usage.total_tokens == 5
     assert embeddings.calls[0]["model"] == "text-embedding-nomic-embed-text-v1.5"
 
 
@@ -165,3 +168,40 @@ async def test_health_true_when_server_answers() -> None:
 async def test_health_false_when_unreachable_not_raised() -> None:
     provider, _, _ = _provider(healthy=False)
     assert await provider.health() is False
+
+
+async def test_health_does_not_let_the_sdk_retry() -> None:
+    """The SDK's default retries made a stopped llama-server cost /v1/ready
+    ~1.3s, past the 2s budget consumers' probes allow once anything
+    else is slow — so the probe must be a single attempt."""
+    provider, _, _ = _provider(healthy=False)
+    assert await provider.health() is False
+    assert provider._client.retry_options == [{"max_retries": 0}]
+
+
+async def _stream(*chunks: Any) -> Any:
+    for chunk in chunks:
+        yield chunk
+
+
+async def test_chat_stream_asks_the_server_for_usage() -> None:
+    delta = SimpleNamespace(
+        usage=None,
+        choices=[
+            SimpleNamespace(delta=SimpleNamespace(content="ok", refusal=None), finish_reason="stop")
+        ],
+    )
+    usage = SimpleNamespace(
+        choices=[], usage=SimpleNamespace(prompt_tokens=4, completion_tokens=1, total_tokens=5)
+    )
+    provider, completions, _ = _provider(_stream(delta, usage))
+    items = [
+        i
+        async for i in provider.chat_stream(
+            ChatRequest(messages=[Message(role="user", content="hi")]), "llama-3.2-3b-gguf"
+        )
+    ]
+    assert completions.calls[0]["stream_options"] == {"include_usage": True}
+    assert "response_format" not in completions.calls[0]
+    assert items[0] == "ok"
+    assert items[1].usage.total_tokens == 5

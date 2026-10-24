@@ -1,0 +1,47 @@
+{{- if .Values.networkPolicy.enabled }}
+# Network-level allow list in front of the gateway's own token + policy checks:
+# a pod outside the consumer namespaces can't even open a connection.
+# Kubelet probes come from the node and are not subject to this policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "amg.fullname" . }}
+  labels:
+    {{- include "amg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "amg.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: http
+          protocol: TCP
+      from:
+        {{- with .Values.networkPolicy.allowedNamespaces }}
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  {{- toYaml . | nindent 18 }}
+        {{- end }}
+        {{- with .Values.networkPolicy.allowedNamespaceLabels }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+        {{- end }}
+        {{- with .Values.networkPolicy.monitoringNamespaces }}
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  {{- toYaml . | nindent 18 }}
+        {{- end }}
+        # `helm test` pods of this release.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: test
+{{- end }}

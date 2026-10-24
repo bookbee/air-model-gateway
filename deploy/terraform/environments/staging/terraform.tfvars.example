@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+project_id = "<staging-project-id>"
+region     = "us-central1"
+
+# false if the platform team already runs the cluster; then set network_id.
+create_platform = true
+# network_id    = "projects/<project>/global/networks/<vpc>"
+
+# CIDRs allowed to reach the GKE control plane (CI runners, office VPN).
+master_authorized_networks = [
+  # { cidr_block = "203.0.113.0/24", display_name = "vpn" },
+]

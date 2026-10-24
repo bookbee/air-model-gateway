@@ -1,0 +1,215 @@
+{{- include "amg.validate" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "amg.fullname" . }}
+  labels:
+    {{- include "amg.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below the current capacity during a rollout.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "amg.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "amg.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Routing, pricing and policy are read at boot: a change must roll the pods.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "amg.serviceAccountName" . }}
+      # The gateway calls no Kubernetes API.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        # The image's `air` user (Dockerfile).
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "amg.selectorLabels" . | nindent 14 }}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "amg.selectorLabels" . | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: {{ include "amg.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The image's CMD plus two production flags: no uvicorn access log
+          # (plain-text lines and a probe hit every few seconds; the gateway's
+          # own JSON audit line covers every call) and a bounded drain on SIGTERM.
+          command:
+            - uvicorn
+            - air_model_gateway.main:app
+            - --host=0.0.0.0
+            - --port={{ .Values.containerPort }}
+            - --no-access-log
+            - --timeout-graceful-shutdown={{ .Values.gracefulShutdownSeconds }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          env:
+            - name: AIR_MODEL_GATEWAY_ENVIRONMENT
+              value: {{ .Values.environment | quote }}
+            - name: AIR_MODEL_GATEWAY_LOG__RENDER
+              value: json
+            {{- if .Values.config.routing }}
+            - name: AIR_MODEL_GATEWAY_GATEWAY__ROUTING_CONFIG_PATH
+              value: {{ printf "%s/routing.yaml" .Values.config.mountPath | quote }}
+            {{- end }}
+            {{- if .Values.config.pricing }}
+            - name: AIR_MODEL_GATEWAY_GATEWAY__PRICING_CONFIG_PATH
+              value: {{ printf "%s/pricing.yaml" .Values.config.mountPath | quote }}
+            {{- end }}
+            - name: AIR_MODEL_GATEWAY_POLICY__CONFIG_PATH
+              {{- if .Values.config.policy }}
+              value: {{ printf "%s/policy.yaml" .Values.config.mountPath | quote }}
+              {{- else }}
+              value: {{ .Values.config.imagePolicyPath | quote }}
+              {{- end }}
+            {{- with .Values.modelServers.ollamaBaseUrl }}
+            - name: AIR_MODEL_GATEWAY_OLLAMA__BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.modelServers.selfHostedBaseUrl }}
+            - name: AIR_MODEL_GATEWAY_SELF_HOSTED__BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: AIR_MODEL_GATEWAY_REDIS__KEY_PREFIX
+              value: {{ .Values.redis.keyPrefix | quote }}
+            {{- if ne .Values.secrets.mode "none" }}
+            - name: AIR_MODEL_GATEWAY_SECRETS_DIR
+              value: {{ .Values.secrets.mountPath | quote }}
+            {{- end }}
+            {{- range $name, $value := .Values.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "{{ .Values.preStopSleepSeconds }}"]
+          startupProbe:
+            httpGet: {path: {{ .Values.probes.startup.path }}, port: http}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+          livenessProbe:
+            httpGet: {path: {{ .Values.probes.liveness.path }}, port: http}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+          readinessProbe:
+            httpGet: {path: {{ .Values.probes.readiness.path }}, port: http}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            # Python and the provider SDKs may write temp files; the root
+            # filesystem is read-only.
+            - name: tmp
+              mountPath: /tmp
+            {{- if include "amg.hasConfig" . }}
+            - name: config
+              mountPath: {{ .Values.config.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- if ne .Values.secrets.mode "none" }}
+            - name: secrets
+              mountPath: {{ .Values.secrets.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- if .Values.redis.tls.enabled }}
+            - name: redis-ca
+              mountPath: {{ .Values.redis.tls.mountPath }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- if include "amg.hasConfig" . }}
+        - name: config
+          configMap:
+            name: {{ include "amg.fullname" . }}-config
+        {{- end }}
+        {{- if eq .Values.secrets.mode "gcpSecretManager" }}
+        - name: secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "amg.fullname" . }}-secrets
+        {{- else if eq .Values.secrets.mode "kubernetesSecret" }}
+        - name: secrets
+          secret:
+            secretName: {{ .Values.secrets.kubernetesSecret.name }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if .Values.redis.tls.enabled }}
+        {{- if eq .Values.secrets.mode "gcpSecretManager" }}
+        - name: redis-ca
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "amg.fullname" . }}-redis-ca
+        {{- else }}
+        - name: redis-ca
+          secret:
+            secretName: {{ .Values.redis.tls.kubernetesSecret }}
+            defaultMode: 0440
+            items:
+              - key: ca.pem
+                path: ca.pem
+        {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

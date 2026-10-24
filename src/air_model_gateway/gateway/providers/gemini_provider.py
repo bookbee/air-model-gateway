@@ -1,16 +1,25 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from air_model_gateway.constants import Provider
 from air_model_gateway.gateway.base import ProviderError, ProviderResult
+from air_model_gateway.gateway.providers._common import (
+    NeverRaised,
+    compact_json,
+    int_attr,
+    is_transient,
+    schema_instruction,
+)
+from air_model_gateway.observability.logging import get_logger
 from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Usage
+
+log = get_logger("gateway.gemini")
 
 # HTTP status meaning "back off" rather than "this will never work".
 _TOO_MANY_REQUESTS = 429
-
-# finish_reason meaning the model stopped short — nothing that validates came back.
-_LENGTH_FINISH_REASON = "MAX_TOKENS"
 
 # finish_reason values that are the safety layer declining, not a fault. Strings
 # rather than enum members so a new SDK member cannot break the import.
@@ -42,7 +51,7 @@ class GeminiProvider:
         self._api_key = api_key
         self._client: Any = None
         self._types: Any = None
-        self._api_error: type[BaseException] = _NeverRaised
+        self._api_error: type[BaseException] = NeverRaised
 
     def _ensure(self) -> None:
         if not self._api_key:
@@ -59,9 +68,47 @@ class GeminiProvider:
 
     async def chat(self, req: ChatRequest, model: str) -> ProviderResult:
         self._ensure()
-        types = self._types
-        system, contents = self._split(req)
+        contents, config = self._request(req)
+        try:
+            resp = await self._client.aio.models.generate_content(
+                model=model, contents=contents, config=config
+            )
+        except Exception as exc:
+            raise self._error(exc) from exc
+        result = _result(resp, model, blocked=_blocked(resp))
+        if not result.refusal:
+            result.content = _text(resp)
+        return result
 
+    async def chat_stream(
+        self, req: ChatRequest, model: str
+    ) -> AsyncGenerator[str | ProviderResult, None]:
+        """Each streamed chunk carries a slice of text; the last one carries the
+        usage (thinking tokens included) and the finish reason. A blocked prompt
+        is reported on the chunk that carries `prompt_feedback`."""
+        self._ensure()
+        contents, config = self._request(req)
+        last: Any = None
+        blocked = False
+        try:
+            stream = await self._client.aio.models.generate_content_stream(
+                model=model, contents=contents, config=config
+            )
+            async for chunk in stream:
+                last = chunk
+                blocked = blocked or _blocked(chunk)
+                text = _text(chunk)
+                if text:
+                    yield text
+        except Exception as exc:
+            raise self._error(exc) from exc
+        if last is None:
+            raise ProviderError(self.name, "stream ended without a response", retryable=True)
+        yield _result(last, model, blocked=blocked)
+
+    def _request(self, req: ChatRequest) -> tuple[list[dict[str, Any]], Any]:
+        """Contents and config, shared by the plain and the streamed call."""
+        system, contents = self._split(req)
         config: dict[str, Any] = {"max_output_tokens": req.max_tokens}
         if system:
             config["system_instruction"] = system
@@ -75,46 +122,15 @@ class GeminiProvider:
                 # Nested models produce $defs, which Gemini rejects. Fall back to
                 # JSON mode with the schema in the instruction.
                 config["system_instruction"] = _with_schema(system, req.json_schema)
+        return contents, self._types.GenerateContentConfig(**config)
 
-        try:
-            resp = await self._client.aio.models.generate_content(
-                model=model, contents=contents, config=types.GenerateContentConfig(**config)
-            )
-        except self._api_error as exc:
+    def _error(self, exc: Exception) -> ProviderError:
+        if isinstance(exc, self._api_error):
             rate_limited = getattr(exc, "code", None) == _TOO_MANY_REQUESTS
-            raise ProviderError(self.name, str(exc), rate_limited=rate_limited) from exc
-        except Exception as exc:
-            raise ProviderError(self.name, str(exc)) from exc
-
-        feedback = getattr(resp, "prompt_feedback", None)
-        if getattr(feedback, "block_reason", None) is not None:
-            return ProviderResult(model=model, refusal=True, finish_reason="refusal")
-
-        candidates = getattr(resp, "candidates", None) or []
-        finish = _name_of(getattr(candidates[0], "finish_reason", None)) if candidates else None
-        if finish in _REFUSAL_FINISH_REASONS:
-            return ProviderResult(model=model, refusal=True, finish_reason="refusal")
-
-        usage = getattr(resp, "usage_metadata", None)
-        prompt_tokens = _int(usage, "prompt_token_count")
-        cache_read = _int(usage, "cached_content_token_count")
-        # Thinking tokens bill at the output rate but sit outside the candidate
-        # count; folding them in is what keeps the reported cost honest.
-        completion = _int(usage, "candidates_token_count") + _int(usage, "thoughts_token_count")
-
-        return ProviderResult(
-            model=model,
-            content=getattr(resp, "text", None) or "",
-            usage=Usage(
-                # Cached tokens are reported inside prompt_token_count; subtract
-                # them out so they are not billed twice at the full input rate.
-                prompt_tokens=max(0, prompt_tokens - cache_read),
-                completion_tokens=completion,
-                total_tokens=_int(usage, "total_token_count"),
-                cache_read_tokens=cache_read,
-            ),
-            finish_reason=_LENGTH_FINISH_REASON if finish == _LENGTH_FINISH_REASON else finish,
-        )
+            return ProviderError(
+                self.name, str(exc), rate_limited=rate_limited, retryable=is_transient(exc)
+            )
+        return ProviderError(self.name, str(exc), retryable=is_transient(exc))
 
     def _split(self, req: ChatRequest) -> tuple[str, list[dict[str, Any]]]:
         """System text and the turn list, in Gemini's own vocabulary."""
@@ -130,15 +146,38 @@ class GeminiProvider:
 
     async def embeddings(self, req: EmbeddingsRequest, model: str) -> ProviderResult:
         self._ensure()
+        # The Gemini API's embed response carries no token usage at all, so
+        # without a count the call would price at $0 despite having a row in
+        # the price book. countTokens is a separate (free) endpoint; it runs
+        # concurrently so it adds no latency, and a router timeout cancels both.
+        resp, tokens = await asyncio.gather(self._embed(req, model), self._count_tokens(req, model))
+        vectors = [list(e.values or []) for e in (getattr(resp, "embeddings", None) or [])]
+        return ProviderResult(
+            model=model,
+            embeddings=vectors,
+            usage=Usage(prompt_tokens=tokens, total_tokens=tokens),
+        )
+
+    async def _embed(self, req: EmbeddingsRequest, model: str) -> Any:
         try:
-            resp = await self._client.aio.models.embed_content(model=model, contents=req.input)
+            return await self._client.aio.models.embed_content(model=model, contents=req.input)
         except self._api_error as exc:
             rate_limited = getattr(exc, "code", None) == _TOO_MANY_REQUESTS
-            raise ProviderError(self.name, str(exc), rate_limited=rate_limited) from exc
+            raise ProviderError(
+                self.name, str(exc), rate_limited=rate_limited, retryable=is_transient(exc)
+            ) from exc
         except Exception as exc:
-            raise ProviderError(self.name, str(exc)) from exc
-        vectors = [list(e.values or []) for e in (getattr(resp, "embeddings", None) or [])]
-        return ProviderResult(model=model, embeddings=vectors)
+            raise ProviderError(self.name, str(exc), retryable=is_transient(exc)) from exc
+
+    async def _count_tokens(self, req: EmbeddingsRequest, model: str) -> int:
+        """Billing only — a failure here must not fail vectors that came back
+        fine, so it degrades to 0 tokens (unbilled) with a warning instead."""
+        try:
+            resp = await self._client.aio.models.count_tokens(model=model, contents=req.input)
+        except Exception as exc:
+            log.warning("gemini.count_tokens_failed", model=model, error=str(exc))
+            return 0
+        return int_attr(resp, "total_tokens")
 
     async def health(self) -> bool:
         return bool(self._api_key)
@@ -148,20 +187,13 @@ class GeminiProvider:
         return None
 
 
-class _NeverRaised(Exception):
-    """Inert stand-in for the SDK error class until the client is built."""
-
-
 def _schema_is_supported(schema: dict[str, Any]) -> bool:
     """Whether Gemini's schema dialect will accept this document as-is."""
-    return "$defs" not in schema and "$ref" not in _dumps(schema)
+    return "$defs" not in schema and "$ref" not in compact_json(schema)
 
 
 def _with_schema(system: str, schema: dict[str, Any]) -> str:
-    instruction = (
-        "Respond with a single JSON object that conforms to this JSON Schema. "
-        "Output only the JSON, no prose:\n" + _dumps(schema)
-    )
+    instruction = schema_instruction(schema)
     return f"{system}\n\n{instruction}" if system else instruction
 
 
@@ -171,12 +203,47 @@ def _name_of(value: object) -> str | None:
     return str(name) if name is not None else None
 
 
-def _int(obj: object, field: str) -> int:
-    value = getattr(obj, field, None)
-    return int(value) if isinstance(value, int) else 0
+def _text(resp: Any) -> str:
+    """The answer text. The SDK's `text` accessor joins the parts of the first
+    candidate; with no candidate (or a part shape it doesn't expect) it can
+    return None or raise, which must not escape the failover chain."""
+    try:
+        return getattr(resp, "text", None) or ""
+    except ValueError:
+        return ""
 
 
-def _dumps(schema: dict[str, Any]) -> str:
-    import json
+def _blocked(resp: Any) -> bool:
+    feedback = getattr(resp, "prompt_feedback", None)
+    return getattr(feedback, "block_reason", None) is not None
 
-    return json.dumps(schema, separators=(",", ":"))
+
+def _result(resp: Any, model: str, *, blocked: bool) -> ProviderResult:
+    """Usage and finish reason from a response (or a stream's last chunk), with
+    empty content: the caller fills it in, or has streamed it already.
+
+    A blocked prompt or a safety stop is a refusal. It still consumed (prompt)
+    tokens, so it keeps its usage and is priced like any call.
+    """
+    candidates = getattr(resp, "candidates", None) or []
+    finish = _name_of(getattr(candidates[0], "finish_reason", None)) if candidates else None
+    refused = blocked or finish in _REFUSAL_FINISH_REASONS
+    usage = getattr(resp, "usage_metadata", None)
+    prompt_tokens = int_attr(usage, "prompt_token_count")
+    cache_read = int_attr(usage, "cached_content_token_count")
+    # Thinking tokens bill at the output rate but sit outside the candidate
+    # count; folding them in is what keeps the reported cost honest.
+    completion = int_attr(usage, "candidates_token_count") + int_attr(usage, "thoughts_token_count")
+    return ProviderResult(
+        model=model,
+        refusal=refused,
+        usage=Usage(
+            # Cached tokens are reported inside prompt_token_count; subtract
+            # them out so they are not billed twice at the full input rate.
+            prompt_tokens=max(0, prompt_tokens - cache_read),
+            completion_tokens=completion,
+            total_tokens=int_attr(usage, "total_token_count"),
+            cache_read_tokens=cache_read,
+        ),
+        finish_reason="refusal" if refused else finish,
+    )

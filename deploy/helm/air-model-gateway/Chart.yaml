@@ -1,0 +1,11 @@
+apiVersion: v2
+name: air-model-gateway
+description: The AIR platform's model gateway (text generation and embeddings across Ollama, Anthropic, OpenAI, Gemini and a self-hosted slot).
+type: application
+# Chart version: bump on any template or default-values change.
+version: 0.1.0
+# The gateway release this chart deploys by default; image.tag overrides it.
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+home: https://github.com/bookbee/air-model-gateway
+keywords: [model, gateway, air-platform]

@@ -12,12 +12,13 @@ class Environment(StrEnum):
 
 
 class Action(StrEnum):
-    """Also the wire value of ``InferenceRequest.task`` — chat and embeddings are
-    both a policy action and the request's task discriminator, so one enum
-    serves both rather than keeping two vocabularies in sync."""
+    """Policy actions. GENERATE and EMBED are named after the routes they guard
+    (POST /v1/generate, POST /v1/embed), so a grant reads the same as the call
+    it allows: one vocabulary across routes, policy files, metrics and the
+    audit line."""
 
-    CHAT = "chat"
-    EMBEDDINGS = "embeddings"
+    GENERATE = "generate"
+    EMBED = "embed"
     ADMIN_READ = "admin_read"
 
 
@@ -33,8 +34,25 @@ class Provider(StrEnum):
     #: PriceBook.is_free() keys off Provider identity, and conflating the two
     #: would risk billing a free local model at OpenAI's cloud rate the moment
     #: its name didn't happen to match a local prefix. Trade-off worth naming:
-    #: if this slot later points at vLLM/TGI in another environment, the value
-    #: becomes misleading until renamed again — the settings slot underneath
-    #: (config.py::SelfHostedSettings, still named generically) doesn't change,
-    #: only this label does.
+    #: if this slot points at vLLM/TGI in some environment, this label should
+    #: change to match; the settings slot underneath
+    #: (config.py::SelfHostedSettings, named generically) stays as it is.
     SELF_HOSTED = "llama.cpp"
+
+
+class ModelClass(StrEnum):
+    """What a caller of POST /v1/generate chooses instead of a model: where the
+    model runs. The owner decides, in deploy/routing.yaml, which models serve
+    each class (per service, if needed)."""
+
+    #: Our own model servers only; the prompt never leaves the network.
+    LOCAL = "local"
+    #: The gateway's choice (local first today, cloud as fallback). The default.
+    AUTO = "auto"
+    #: Cloud providers only.
+    CLOUD = "cloud"
+
+
+#: Providers that run on our own servers. A `local` chain or a `local-*`
+#: embedding model may only use these; a `cloud` one only the others.
+LOCAL_PROVIDERS: frozenset[Provider] = frozenset({Provider.OLLAMA, Provider.SELF_HOSTED})

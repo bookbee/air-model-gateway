@@ -1,0 +1,56 @@
+# Memorystore stand-in for the kind cluster: Redis with AUTH and TLS only
+# (no plaintext port), signed by a local CA, so the gateway exercises the same
+# rediss:// + ssl_ca_certs path it uses against Memorystore in-transit
+# encryption. up.sh creates the namespace's `redis-tls` and `redis-auth`
+# Secrets before applying this. Test infrastructure only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: air-model-gateway-deps
+  labels: {app: redis}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: redis}
+  template:
+    metadata:
+      labels: {app: redis}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          args:
+            - sh
+            - -c
+            - >-
+              exec redis-server --port 0 --tls-port 6378
+              --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key
+              --tls-ca-cert-file /tls/ca.crt --tls-auth-clients no
+              --requirepass "$REDIS_PASSWORD" --maxmemory 64mb
+              --maxmemory-policy volatile-lru
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: redis-auth, key: password}
+          ports:
+            - {name: redis, containerPort: 6378}
+          volumeMounts:
+            - {name: tls, mountPath: /tls, readOnly: true}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        - name: tls
+          secret:
+            secretName: redis-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: air-model-gateway-deps
+spec:
+  selector: {app: redis}
+  ports:
+    - {name: redis, port: 6378, targetPort: redis}

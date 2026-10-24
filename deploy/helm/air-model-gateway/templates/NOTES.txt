@@ -1,0 +1,18 @@
+air-model-gateway ({{ .Values.environment }}) is deployed as {{ include "amg.fullname" . }} in {{ .Release.Namespace }}.
+
+Consumers in this cluster call:
+  http://{{ include "amg.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local{{ if ne (int .Values.service.port) 80 }}:{{ .Values.service.port }}{{ end }}
+
+with their service token in X-API-Key.
+{{- if .Values.networkPolicy.enabled }}
+Their namespace must be allowed by the NetworkPolicy: label it
+{{- range $k, $v := .Values.networkPolicy.allowedNamespaceLabels }} {{ $k }}={{ $v }}{{ end }}
+{{- with .Values.networkPolicy.allowedNamespaces }} or list it in networkPolicy.allowedNamespaces{{ end }}.
+{{- end }}
+
+Check it:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+  deploy/gke/smoke.sh   (authenticated checks; see docs/03-deployment.md)
+
+After rotating a secret:
+  kubectl -n {{ .Release.Namespace }} rollout restart deployment/{{ include "amg.fullname" . }}
