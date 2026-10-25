@@ -9,7 +9,8 @@ two from drifting apart silently:
 - every metric the code exports is documented, and every documented metric
   exists;
 - every relative link in the Markdown docs resolves;
-- `make ollama-pull` pulls every Ollama model deploy/routing.yaml names.
+- `make ollama-pull` pulls every Ollama model deploy/routing.yaml names;
+- the committed design diagrams are what docs/design/diagrams.py draws.
 """
 
 from __future__ import annotations
@@ -161,3 +162,16 @@ def test_ollama_pull_covers_every_ollama_model_the_routing_uses() -> None:
     line = re.search(r"^OLLAMA_MODELS \?= (.+)$", (ROOT / "Makefile").read_text(), re.M)
     assert line is not None
     assert used <= set(line.group(1).split())
+
+
+def test_the_committed_design_diagrams_are_current() -> None:
+    """Like the OpenAPI drift check: edit diagrams.py, then `make design`."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("diagrams", ROOT / "docs/design/diagrams.py")
+    assert spec is not None and spec.loader is not None
+    diagrams = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(diagrams)
+    for name, draw in diagrams.DIAGRAMS.items():
+        committed = (ROOT / "docs/design/diagrams" / f"{name}.svg").read_text()
+        assert committed == draw() + "\n", f"{name}.svg is stale: run make design"

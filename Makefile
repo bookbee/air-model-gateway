@@ -69,7 +69,7 @@ endif
 
 export AIR_MODEL_GATEWAY_REDIS_URL := $(REDIS_CONTAINER_URL)
 
-SOURCES := src tests
+SOURCES := src tests docs/design
 
 .DEFAULT_GOAL := help
 
@@ -378,6 +378,18 @@ openapi: ## Write the API contract to docs/openapi.json (commit it)
 		spec = create_app(Settings(_env_file=None)).openapi(); \
 		pathlib.Path('docs/openapi.json').write_text(json.dumps(spec, indent=2) + '\n')" >/dev/null
 	@echo "wrote docs/openapi.json"
+
+# The visual design document. Headless Chrome prints the HTML pages, so the PDF
+# matches what a browser shows; CHROME points at any Chrome or Chromium binary.
+CHROME ?= $(if $(filter Darwin,$(shell uname -s)),/Applications/Google Chrome.app/Contents/MacOS/Google Chrome,google-chrome)
+
+.PHONY: design
+design: ## Redraw docs/design diagrams and print docs/air-model-gateway-design.pdf (commit both)
+	$(PY) docs/design/diagrams.py
+	@"$(CHROME)" --headless=new --disable-gpu --no-pdf-header-footer \
+		--print-to-pdf="$(CURDIR)/docs/air-model-gateway-design.pdf" \
+		"file://$(CURDIR)/docs/design/design.html" 2>/dev/null
+	@echo "wrote docs/air-model-gateway-design.pdf"
 
 .PHONY: check
 check: lint typecheck test ## Lint + typecheck + test

@@ -7,6 +7,61 @@ model class (`local`, `auto`, `cloud`) or a published embedding model, never a m
 name; the gateway handles model selection, authentication, permissions, rate limits,
 failover, retries, circuit breaking, cost accounting, caching and observability.
 
+## Visual design
+
+**[AIR Model Gateway · Visual Design (PDF)](docs/air-model-gateway-design.pdf)**: 14
+printable A4-landscape pages that give development and DevOps teams the whole picture:
+every component, how they are wired, how consumers integrate, and how it is deployed
+and operated. Each page is one diagram with short numbered notes; keep it at hand for
+design discussions and onboarding.
+
+| Page | Topic | What it shows |
+|---|---|---|
+| 2 | System context | Consumers, the gateway, local and cloud models, Redis, config, observability |
+| 3 | Components | Every module under `src/`, the request path through them, and what they share |
+| 4 | Request flow | `/v1/generate` step by step, with each early exit (401, 403, 422, 429, 502) |
+| 5 | Model choice | Classes, provider preference, pins, embedding names, today's chains and overrides |
+| 6 | Resilience | Chain walk, quotas, deadlines, the retry rule, the circuit breaker |
+| 7 | Streaming | Server-Sent Events: what can fail before and after the first token |
+| 8 | Governance | The policy file, each consumer's grants, rate limits, quotas, budgets |
+| 9 | API quick reference | Endpoints, headers, request and response bodies, errors, retry advice |
+| 10 | GKE deployment | Namespaces, the Helm chart, Secret Manager, Memorystore, egress |
+| 11 | Delivery pipeline | CI gates, build once, staging, approval, promotion, one-time setup |
+| 12 | Environments and gates | Laptop, integration stack, kind, GKE, and the command that proves each |
+| 13 | Observability and operations | Metrics, the audit line, first alerts, troubleshooting |
+| 14 | Repository map and ownership | Layout, who changes what, design principles |
+
+The diagrams, as GitHub shows them:
+
+![System context](docs/design/diagrams/01-context.svg)
+
+![Components](docs/design/diagrams/02-components.svg)
+
+![Request flow](docs/design/diagrams/03-request-flow.svg)
+
+![Model choice](docs/design/diagrams/04-model-choice.svg)
+
+<details>
+<summary>Resilience, streaming, governance, deployment, delivery and environments</summary>
+
+![Resilience](docs/design/diagrams/05-resilience.svg)
+
+![Streaming](docs/design/diagrams/06-streaming.svg)
+
+![Governance](docs/design/diagrams/07-governance.svg)
+
+![GKE deployment](docs/design/diagrams/08-gke.svg)
+
+![Delivery pipeline](docs/design/diagrams/09-delivery.svg)
+
+![Environments and gates](docs/design/diagrams/10-environments.svg)
+
+</details>
+
+The PDF and the SVGs are generated from `docs/design/` (`diagrams.py` draws the
+diagrams, `design.html` lays out the pages). After a change to the system, update the
+source and run `make design` (needs Google Chrome or Chromium).
+
 ## Capabilities
 
 - **One contract for every provider.** Generation (with optional JSON-Schema
@@ -82,6 +137,8 @@ cloud secret-store drivers deliver them. Routing, pricing and permissions live i
 
 ## Documentation
 
+- [`docs/air-model-gateway-design.pdf`](docs/air-model-gateway-design.pdf): the visual
+  design, printable; the quickest way to the big picture.
 - [`docs/overview.md`](docs/overview.md): **start here.** Architecture, request flow,
   consumers, the purpose of every file, running, testing and operating.
 - [`docs/00-plan.md`](docs/00-plan.md): scope, goals, non-goals and key decisions.

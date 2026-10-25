@@ -28,16 +28,17 @@
 <text x="630" y="59" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">no</text>
 <polyline points="850,65 890,65" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
 <text x="870" y="59" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">ok</text>
-<polyline points="315,90 315,130 105,130 105,90" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
-<text x="210" y="146" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">yes: skip (circuit_skips)</text>
+<polyline points="315,90 315,130 150,130 150,90" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+<text x="232" y="146" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">yes: skip (circuit_skips)</text>
 <polyline points="525,90 525,130 315,130" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
 <text x="440" y="146" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">yes: skip</text>
-<polyline points="750,90 750,180 105,180 105,90" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
-<text x="430" y="196" font-size="10.5" font-weight="normal" fill="#C62828" text-anchor="middle">error or timeout: next rung</text>
+<polyline points="750,90 750,168 120,168 120,90" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<text x="470" y="162" font-size="10.5" font-weight="normal" fill="#C62828" text-anchor="middle">error or timeout: next rung</text>
+<polyline points="45,90 45,220" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
+<text x="52" y="150" font-size="10.5" font-weight="normal" fill="#C62828" text-anchor="start">chain exhausted</text>
 <rect x="20" y="220" width="330" height="78" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
 <text x="30" y="240" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Every rung failed</text>
 <text x="30" y="255.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">any failure retryable (timeout, 429, 5xx, dropped)?</text>
-<polyline points="105,180 105,220" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
 <rect x="400" y="220" width="300" height="78" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
 <text x="410" y="240" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Retry the whole chain</text>
 <text x="410" y="255.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">once (retry_attempts 1), after jittered</text>
@@ -50,7 +51,8 @@
 <text x="375" y="244" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">yes</text>
 <polyline points="350,280 370,280 370,320 895,320 895,298" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>
 <text x="630" y="336" font-size="10.5" font-weight="normal" fill="#C62828" text-anchor="middle">no, or retries used</text>
-<polyline points="700,259 720,259 720,120 20,120 20,90" fill="none" stroke="#5F6673" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-muted)"/>
+<polyline points="550,220 550,200 8,200 8,65 20,65" fill="none" stroke="#5F6673" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-muted)"/>
+<text x="300" y="214" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="middle">walk again from rung 1</text>
 <text x="20" y="380" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">Circuit breaker per (provider, model)  (gateway/resilience.py)</text>
 <rect x="20" y="400" width="190" height="66" rx="7" fill="#E8F5E3" stroke="#3C8D2F" stroke-width="1.4"/>
 <text x="115.0" y="431.75" font-size="15" font-weight="bold" fill="#1F2430" text-anchor="middle">CLOSED</text>

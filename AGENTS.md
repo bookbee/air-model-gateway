@@ -44,6 +44,8 @@ lists what each gate proves.
 - `make kind-up` / `kind-test`: the Helm chart with production values on a local kind cluster.
 - `make gke-render|gke-deploy|gke-smoke`: GKE, see `docs/03-deployment.md`.
 - `make openapi`: regenerate `docs/openapi.json` after any wire change.
+- `make design`: redraw `docs/design/diagrams/*.svg` and reprint
+  `docs/air-model-gateway-design.pdf` (needs Chrome) after changing `docs/design/`.
 
 Tests: `asyncio_mode = "auto"`. Endpoint tests use `httpx.ASGITransport` and build the
 app with `create_app(settings)` (`tests/conftest.py`), never the module-level `app`.
@@ -125,6 +127,9 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
   `cost.DEFAULT_PRICING` roughly in sync (local fallback only).
 - **New provider:** an adapter in `gateway/providers/`, a `Provider` member, wiring in
   `main.py`, prices, a test file against a faked SDK, and docs §6 of the LLD.
+- **Anything the visual design shows** (a chain, a grant, a route, a module, the chart,
+  the pipeline): update `docs/design/diagrams.py` or `design.html`, then `make design`.
+  A test fails when the committed SVGs differ from what `diagrams.py` draws.
 - **Dependency:** `pyproject.toml`, `make lock`, `make verify`.
 - **Chart, values or Terraform:** `make gke-validate`, then `make kind-up kind-test`.
   After changing a Terraform provider version, re-lock for every platform:

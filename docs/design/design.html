@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIR Model Gateway · Visual Design</title>
+<!--
+  Source of docs/air-model-gateway-design.pdf. `make design` redraws the SVGs in
+  diagrams/ (diagrams.py) and prints this page to the PDF with headless Chrome.
+  Each <section class="page"> is one A4 landscape sheet. The numbered notes on a
+  page match the numbered pins in its diagram.
+-->
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  :root {
+    --ink: #1F2430; --muted: #5F6673; --rule: #E3E6EB; --accent: #0F8C7E;
+    --consumer: #2F6FDB; --edge: #6B4FD8; --core: #0F8C7E; --local: #3C8D2F;
+    --cloud: #D9822B; --state: #C23B57; --obs: #A87F00; --config: #5F6673; --infra: #4F46E5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #FFFFFF; color: var(--ink);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 9.2pt; line-height: 1.38; }
+  .page { width: 297mm; height: 210mm; padding: 10mm 13mm 9mm; display: flex; flex-direction: column;
+    page-break-after: always; break-after: page; overflow: hidden; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  header.bar { display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 2px solid var(--accent); padding-bottom: 2.2mm; margin-bottom: 3.5mm; }
+  header.bar h2 { margin: 0; font-size: 15pt; }
+  header.bar .lead { color: var(--muted); font-size: 9.5pt; margin-left: 4mm; flex: 1; }
+  header.bar .sec { color: var(--accent); font-weight: bold; font-size: 10pt; white-space: nowrap; }
+  footer { margin-top: auto; display: flex; justify-content: space-between; color: var(--muted);
+    font-size: 7.5pt; border-top: 1px solid var(--rule); padding-top: 1.5mm; }
+  figure { margin: 0; display: flex; justify-content: center; }
+  figure img { max-width: 100%; max-height: 118mm; }
+  figure.tall img { max-height: 128mm; }
+  figure.short img { max-height: 95mm; }
+  ol.notes { list-style: none; counter-reset: n; margin: 3mm 0 0; padding: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6mm 5mm; }
+  ol.notes.three { grid-template-columns: repeat(3, 1fr); }
+  ol.notes li { counter-increment: n; position: relative; padding-left: 6.4mm; font-size: 8.3pt; }
+  ol.notes li::before { content: counter(n); position: absolute; left: 0; top: 0.2mm; width: 4.6mm; height: 4.6mm;
+    border-radius: 50%; background: var(--ink); color: #fff; font-weight: bold; font-size: 7.4pt;
+    display: flex; align-items: center; justify-content: center; }
+  ol.notes li b { display: block; }
+  .cols { display: grid; gap: 6mm; }
+  .cols.two { grid-template-columns: 1fr 1fr; }
+  .cols.three { grid-template-columns: 1fr 1fr 1fr; }
+  h3 { font-size: 10.5pt; margin: 0 0 1.5mm; color: var(--accent); }
+  p { margin: 0 0 2mm; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.2pt; }
+  th, td { text-align: left; vertical-align: top; padding: 1.1mm 1.6mm; border-bottom: 1px solid var(--rule); }
+  th { background: #F1ECFD; font-weight: bold; }
+  code, pre { font-family: Menlo, Consolas, monospace; font-size: 7.6pt; }
+  pre { font-size: 7.3pt; }
+  pre { background: #F6F7F9; border: 1px solid var(--rule); border-radius: 2mm; padding: 2mm 2.5mm; margin: 0 0 2mm;
+    white-space: pre; overflow: hidden; }
+  .tag { display: inline-block; border-radius: 1.2mm; padding: 0 1.4mm; font-size: 7.6pt; color: #fff; }
+  /* Cover */
+  .cover { padding: 0; }
+  .cover .band { background: var(--ink); color: #fff; padding: 11mm 16mm 8mm; }
+  .cover .band h1 { margin: 0 0 2mm; font-size: 30pt; letter-spacing: -0.3pt; }
+  .cover .band .sub { font-size: 13pt; color: #C9CED8; }
+  .cover .band .meta { margin-top: 3mm; font-size: 9pt; color: #AEB5C2; }
+  .cover .body { padding: 6mm 16mm 0; display: grid; grid-template-columns: 1.25fr 1fr; gap: 10mm; flex: 1; }
+  .cover footer { margin: 0 16mm 9mm; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6mm 4mm; margin-top: 1mm; }
+  .legend span { display: flex; align-items: center; gap: 2mm; font-size: 8.3pt; }
+  .legend i { width: 7mm; height: 4mm; border-radius: 1mm; border: 1.3px solid; display: inline-block; }
+  ol.toc { margin: 0; padding-left: 5mm; columns: 2; column-gap: 8mm; }
+  ol.toc li { margin-bottom: 0.9mm; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin: 3mm 0; }
+  .facts div { border: 1px solid var(--rule); border-radius: 2mm; padding: 1.4mm 2.2mm; font-size: 8.4pt; }
+  .facts b { display: block; font-size: 13pt; color: var(--accent); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- 1 · Cover ------------------------------------------------------------ -->
+<section class="page cover">
+  <div class="band">
+    <h1>AIR Model Gateway</h1>
+    <div class="sub">Visual design: components, wiring, integration and operations</div>
+    <div class="meta">air-model-gateway 0.1.0 · AIR platform · as of 2026-10-25 · printable A4 landscape</div>
+  </div>
+  <div class="body">
+    <div>
+      <h3>What it is</h3>
+      <p>One HTTP service through which every AIR service reaches a language or embedding model:
+      <code>POST /v1/generate</code> for text (optionally structured JSON, optionally streamed) and
+      <code>POST /v1/embed</code> for vectors. Callers choose a <b>model class</b>
+      (<code>local</code>, <code>auto</code>, <code>cloud</code>) or a <b>published embedding model</b>
+      (<code>local-768-v1</code>), never a model name. The gateway owns everything else: which models
+      serve each class, failover, retries, circuit breakers, authentication, permissions, rate limits,
+      budgets, cost accounting, caching and observability.</p>
+      <div class="facts">
+        <div><b>2</b>model routes, plus capabilities, health, readiness, metrics</div>
+        <div><b>5</b>providers: Ollama, llama.cpp slot, Gemini, Anthropic, OpenAI</div>
+        <div><b>5</b>AIR consumers, each with its own token and grants</div>
+        <div><b>3</b>model classes; 2 published embedding models</div>
+        <div><b>0</b>runtime dependencies on other AIR services</div>
+        <div><b>4</b>environments: laptop, integration, kind, GKE</div>
+      </div>
+      <h3>How to read this document</h3>
+      <p>Each page has one diagram and short notes. A <b>numbered pin</b> in a diagram points to the note
+      with the same number. File paths are relative to the repository root. Colours mean the same on
+      every page:</p>
+      <div class="legend">
+        <span><i style="background:#E8F1FD;border-color:#2F6FDB"></i>Consumers (AIR services)</span>
+        <span><i style="background:#F1ECFD;border-color:#6B4FD8"></i>API edge and control plane</span>
+        <span><i style="background:#E3F5F2;border-color:#0F8C7E"></i>Gateway core: catalog, router</span>
+        <span><i style="background:#E8F5E3;border-color:#3C8D2F"></i>Local models (free, private)</span>
+        <span><i style="background:#FDEFE2;border-color:#D9822B"></i>Cloud models (billed)</span>
+        <span><i style="background:#FCE8EC;border-color:#C23B57"></i>State and secrets (Redis, ledger)</span>
+        <span><i style="background:#FFF6D9;border-color:#A87F00"></i>Observability and pricing</span>
+        <span><i style="background:#F2F3F5;border-color:#5F6673"></i>Configuration</span>
+        <span><i style="background:#EEF1FE;border-color:#4F46E5"></i>GCP infrastructure</span>
+        <span><i style="background:#FDECEC;border-color:#C62828"></i>Errors returned to callers</span>
+      </div>
+    </div>
+    <div>
+      <h3>Contents</h3>
+      <ol class="toc">
+        <li>System context</li>
+        <li>Components</li>
+        <li>Request flow</li>
+        <li>Model choice</li>
+        <li>Resilience</li>
+        <li>Streaming</li>
+        <li>Governance</li>
+        <li>API quick reference</li>
+        <li>GKE deployment</li>
+        <li>Delivery pipeline</li>
+        <li>Environments and gates</li>
+        <li>Observability and operations</li>
+        <li>Repository map and ownership</li>
+      </ol>
+      <h3 style="margin-top:5mm">Where the detail lives</h3>
+      <table>
+        <tr><td><code>docs/overview.md</code></td><td>Team guide: every file, running, testing, troubleshooting</td></tr>
+        <tr><td><code>docs/00-plan.md</code></td><td>Scope, decisions, future work</td></tr>
+        <tr><td><code>docs/01-hld.md</code>, <code>02-lld.md</code></td><td>High- and low-level design (win on disagreement)</td></tr>
+        <tr><td><code>docs/03-deployment.md</code></td><td>GKE runbook for DevOps</td></tr>
+        <tr><td><code>docs/04-integration.md</code></td><td>Guide for teams calling the gateway</td></tr>
+        <tr><td><code>docs/05-handover.md</code></td><td>Assurance gates, risks, open items</td></tr>
+        <tr><td><code>docs/openapi.json</code></td><td>The wire contract (generate clients from it)</td></tr>
+      </table>
+      <p class="muted" style="margin-top:3mm">This document is generated from <code>docs/design/</code>
+      with <code>make design</code>; when the system changes, change the source and regenerate.</p>
+    </div>
+  </div>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>1</span></footer>
+</section>
+
+<!-- 2 · System context ---------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>1 · System context</h2><span class="lead">Who calls the gateway, and what it calls</span><span class="sec">Big picture</span></header>
+  <figure class="tall"><img src="diagrams/01-context.svg" alt="System context"></figure>
+  <ol class="notes">
+    <li><b>Consumers</b>Five AIR services, each with its own token and grants. They call it directly over HTTP; there is no shared SDK requirement.</li>
+    <li><b>One API</b>Two model routes. <code>/v1/capabilities</code> tells a caller what its classes mean; health and readiness serve probes.</li>
+    <li><b>Owner-managed config</b>Models, chains, prices and grants are files in <code>deploy/</code>: an edit and a deploy, never a code release.</li>
+    <li><b>Local models</b>Free and private. <code>local</code> never leaves the network; <code>auto</code> tries local first.</li>
+    <li><b>Cloud models</b>Billed per token, priced from <code>deploy/pricing.yaml</code>. Cross-vendor chains survive one vendor's outage.</li>
+    <li><b>Redis, optional</b>Shares cache, rate limits and spend across replicas. Without it, or when it fails, each replica keeps state in memory.</li>
+    <li><b>Observability</b>Prometheus metrics on <code>/metrics</code>; one JSON <code>model.call</code> audit line per served call.</li>
+    <li><b>Standalone</b>A hard design rule: the gateway needs no other AIR service at runtime, in any environment.</li>
+  </ol>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>2</span></footer>
+</section>
+
+<!-- 3 · Components -------------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>2 · Components</h2><span class="lead">The modules under <code>src/air_model_gateway/</code> and how a request moves through them</span><span class="sec">Code</span></header>
+  <figure class="tall"><img src="diagrams/02-components.svg" alt="Components"></figure>
+  <ol class="notes">
+    <li><b>Thin edge</b>Middleware bounds the request id and counts requests; routes only authenticate and hand over to <code>api/v1/model_calls.py</code>, so the two model routes can't drift apart.</li>
+    <li><b>Composition root</b><code>main.py::create_app</code> builds every collaborator once and hangs it on <code>app.state</code>. Outside <code>local</code> it refuses to start without its config files and tokens.</li>
+    <li><b>Control plane</b>Policy grants (fail closed outside local) and per-service token buckets.</li>
+    <li><b>The call path</b><code>model_calls</code> chooses the chain (catalog), checks the cache and the budget, runs the router, then prices, records spend, stores the cache entry and writes the audit line.</li>
+    <li><b>Router</b>Runs a chain; it never decides which models. Adapters turn every failure into a <code>ProviderError</code>. Cloud SDKs load lazily.</li>
+    <li><b>Per-service cache</b>Keyed on the calling service, the chain and every field that changes the question. Refusals and cut-off answers are never cached.</li>
+    <li><b>Degrade, never fail</b>All Redis access goes through <code>RedisStore</code>; each user falls back to memory. <code>/v1/ready</code> reports Redis but never gates on it.</li>
+  </ol>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>3</span></footer>
+</section>
+
+<!-- 4 · Request flow ------------------------------------------------------ -->
+<section class="page">
+  <header class="bar"><h2>3 · Request flow</h2><span class="lead"><code>POST /v1/generate</code>, step by step, with every early exit</span><span class="sec">Runtime</span></header>
+  <figure><img src="diagrams/03-request-flow.svg" alt="Request flow"></figure>
+  <div class="cols three" style="margin-top:3mm">
+    <div><h3>Before the model (steps 1–7)</h3><p>Everything cheap and local runs first: identity, grant, rate, choice, cache, budget.
+    A request refused here costs no provider call. Validation errors (unknown field, bad role, out-of-range
+    <code>temperature</code>) are 422 and never reach a provider.</p></div>
+    <div><h3>The model (step 8)</h3><p>The router walks the chain the catalog chose: per-attempt deadline, open breakers and spent
+    provider quotas skipped, one jittered retry if a failure was transient. It returns 429 only if every
+    rung was throttled; otherwise 502 naming each rung's error.</p></div>
+    <div><h3>After the model (step 9)</h3><p>Price from <code>pricing.yaml</code> (local models are free), add to the service's daily
+    spend, store in the cache, count tokens and cost, write one <code>model.call</code> line: service,
+    operation, choice, provider, model, tokens, cost, cached, finish_reason.</p></div>
+  </div>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>4</span></footer>
+</section>
+
+<!-- 5 · Model choice ------------------------------------------------------ -->
+<section class="page">
+  <header class="bar"><h2>4 · Model choice</h2><span class="lead">Callers choose a class; <code>deploy/routing.yaml</code> decides the models</span><span class="sec">Routing</span></header>
+  <figure><img src="diagrams/04-model-choice.svg" alt="Model choice"></figure>
+  <ol class="notes">
+    <li><b>The request</b><code>model</code> defaults to <code>auto</code>. <code>provider</code> is a preference, not a filter. <code>pin</code> names an exact model and stands alone.</li>
+    <li><b>Grant first</b>The policy says which classes, providers, embedding models and pins a service may use; outside the grant is 403.</li>
+    <li><b>Catalog</b><code>gateway/models.py</code> turns an allowed choice into a chain. A choice that means nothing (unpublished name, provider not in the class) is 422.</li>
+    <li><b>Classes</b><code>local</code> stays on our servers; <code>cloud</code> uses cloud models only; <code>auto</code> is local first with cloud fallback.</li>
+    <li><b>Overrides</b>A class can mean something different for one service; tuning one consumer never moves another. <code>/v1/capabilities</code> shows each service its own chains.</li>
+    <li><b>Embeddings</b>A name is permanent: one model, fixed dimensions, never a fallback. A new model is a new name (<code>-v2</code>) and a re-index.</li>
+    <li><b>Preference</b>Moves the provider's rungs to the front and keeps the rest as fallback. The cache key includes the chain, so a routing change invalidates old answers.</li>
+  </ol>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>5</span></footer>
+</section>
+
+<!-- 6 · Resilience -------------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>5 · Resilience</h2><span class="lead">Failover, retries and circuit breakers in <code>gateway/router.py</code></span><span class="sec">Routing</span></header>
+  <figure><img src="diagrams/05-resilience.svg" alt="Resilience"></figure>
+  <ol class="notes three">
+    <li><b>Breaker check</b>An open breaker skips the rung without a call, so a dead model costs nothing while it is down.</li>
+    <li><b>Provider quota</b><code>provider_quotas</code> caps calls per minute to a provider across all services; over quota, the rung is skipped and the chain fails over.</li>
+    <li><b>Deadline</b>Each attempt has its own deadline (60 s). A caller bounds the whole call with its own client timeout.</li>
+    <li><b>Retryable?</b>Timeouts, 429, 5xx and dropped connections are transient; a 400 or a refusal is not, and is never retried.</li>
+    <li><b>One retry layer</b>The router retries the whole chain once with jittered backoff. SDK retries are off so retries never multiply.</li>
+    <li><b>Breaker</b>Per (provider, model), per replica. Five consecutive transient failures open it; a trial call after 30 s closes or reopens it.</li>
+  </ol>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>6</span></footer>
+</section>
+
+<!-- 7 · Streaming --------------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>6 · Streaming</h2><span class="lead"><code>stream: true</code> on <code>/v1/generate</code> answers with Server-Sent Events</span><span class="sec">Runtime</span></header>
+  <figure class="short"><img src="diagrams/06-streaming.svg" alt="Streaming"></figure>
+  <div class="cols two" style="margin-top:3mm">
+    <ol class="notes" style="grid-template-columns:1fr 1fr;margin:0">
+      <li><b>Before the first token</b>Everything can still fail as plain HTTP (401, 403, 422, 429, 502), and the router can still fail over to the next rung.</li>
+      <li><b>After it</b>Status is 200 and the model is fixed. Events: one <code>start</code>, many <code>delta</code>, then <code>done</code> or <code>error</code>.</li>
+      <li><b>done</b>The same summary as a JSON answer without <code>content</code>: id, model, provider, usage, cost, finish_reason.</li>
+      <li><b>error</b>A Problem body (code, detail, request id). The answer so far is incomplete; retry the whole call if needed.</li>
+      <li><b>Disconnect</b>The gateway closes the provider stream. The call is audited as <code>client_disconnected</code> and not billed to the budget (usage is unknown).</li>
+    </ol>
+    <div>
+      <h3>On the wire</h3>
+<pre>event: start
+data: {"id":"…","model":"llama3.2:3b","provider":"ollama","cached":false}
+
+event: delta
+data: {"content":"Hel"}
+
+event: done
+data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
+      <p>Headers <code>Cache-Control: no-cache</code> and <code>X-Accel-Buffering: no</code> keep proxies from
+      buffering. A cache hit replays as one <code>delta</code>. Clients read with a read timeout above the
+      30 s idle limit, not a total timeout. <code>EventSource</code> can't POST: use <code>fetch</code> and read the body.</p>
+    </div>
+  </div>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>7</span></footer>
+</section>
+
+<!-- 8 · Governance -------------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>7 · Governance</h2><span class="lead">Who may do what, how often, and for how much</span><span class="sec">Control plane</span></header>
+  <figure class="tall"><img src="diagrams/07-governance.svg" alt="Governance"></figure>
+  <ol class="notes">
+    <li><b>One file per environment</b><code>policy.local.yaml</code>, <code>policy.staging.yaml</code>, <code>policy.prod.yaml</code>. Read at startup, shown read-only at <code>GET /v1/admin/policy</code>.</li>
+    <li><b>Per-service entry</b>Resources and actions (<code>inference: generate, embed</code>; <code>admin: admin_read</code>), rate, model choices, pin, budget.</li>
+    <li><b>Grants today</b>Pinned by <code>tests/test_gateway_config.py</code>: dropping a grant a consumer relies on fails the build.</li>
+    <li><b>Adding a consumer</b>All three policy files, the test's consumer table, the token scripts, the smoke tests, Terraform's <code>consumers</code> and the GKE NetworkPolicy namespaces.</li>
+  </ol>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>8</span></footer>
+</section>
+
+<!-- 9 · API quick reference ----------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>8 · API quick reference</h2><span class="lead">The contract consumers code against: <code>docs/openapi.json</code></span><span class="sec">Integration</span></header>
+  <div class="cols three" style="flex:1">
+    <div>
+      <h3>Endpoints</h3>
+      <table>
+        <tr><th>Route</th><th>Purpose</th></tr>
+        <tr><td><code>POST /v1/generate</code></td><td>Text from messages; JSON or SSE</td></tr>
+        <tr><td><code>POST /v1/embed</code></td><td>One vector per input text</td></tr>
+        <tr><td><code>GET /v1/capabilities</code></td><td>Your classes, chains, grants</td></tr>
+        <tr><td><code>GET /v1/health</code></td><td>Liveness (no auth)</td></tr>
+        <tr><td><code>GET /v1/ready</code></td><td>200 if any provider answers, else 503</td></tr>
+        <tr><td><code>GET /v1/admin/policy</code></td><td>Effective policy (admin_read)</td></tr>
+        <tr><td><code>GET /metrics</code></td><td>Prometheus exposition</td></tr>
+      </table>
+      <h3 style="margin-top:3mm">Headers</h3>
+      <table>
+        <tr><td><code>X-API-Key</code></td><td>Your service token (required)</td></tr>
+        <tr><td><code>X-Request-ID</code></td><td>Optional, ≤128 of <code>A-Za-z0-9._:-</code>; echoed and logged</td></tr>
+        <tr><td><code>Retry-After</code></td><td>On 429 <code>budget_exceeded</code></td></tr>
+      </table>
+      <h3 style="margin-top:3mm">Reference client</h3>
+      <p><code>src/air_model_gateway_client</code>: <code>generate</code>, <code>generate_stream</code>, <code>embed</code>; reads
+      <code>AIR_MODEL_GATEWAY_URL</code> and <code>AIR_MODEL_GATEWAY_TOKEN</code>.</p>
+    </div>
+    <div>
+      <h3>Generate</h3>
+<pre>POST /v1/generate
+{
+  "model": "auto",          // local | auto | cloud
+  "provider": "anthropic",  // optional preference
+  "messages": [
+    {"role": "system", "content": "…"},
+    {"role": "user", "content": "…"}
+  ],
+  "max_tokens": 300,
+  "temperature": 0.2,
+  "json_schema": {…},       // optional
+  "schema_name": "verdict",
+  "cache_prefix": true,
+  "stream": false,
+  "cache": true
+}</pre>
+      <p class="muted">Stateless: send the whole history each call. Unknown fields are 422.</p>
+<pre>200: id, content, model_class, model,
+     provider, usage, cost_usd, cached,
+     refusal, finish_reason,
+     provider_finish_reason</pre>
+      <h3>Embed</h3>
+<pre>POST /v1/embed
+{"model": "local-768-v1",
+ "input": ["text a", "text b"]}
+
+200: id, embedding_model, dimensions,
+     model, provider, embeddings,
+     usage, cost_usd</pre>
+    </div>
+    <div>
+      <h3>Errors (application/problem+json)</h3>
+      <table>
+        <tr><th>Status · code</th><th>Meaning · action</th></tr>
+        <tr><td>401 <code>unauthorized</code></td><td>Missing or unknown token</td></tr>
+        <tr><td>403 <code>policy_denied</code></td><td>Not granted (operation, class, provider, pin, embedding model)</td></tr>
+        <tr><td>422 <code>validation_error</code></td><td>Body invalid; detail names each field</td></tr>
+        <tr><td>422 <code>invalid_model_choice</code></td><td>Choice means nothing here; see capabilities</td></tr>
+        <tr><td>429 <code>rate_limited</code></td><td>Retry with backoff</td></tr>
+        <tr><td>429 <code>budget_exceeded</code></td><td>Stop until <code>Retry-After</code> (next UTC day)</td></tr>
+        <tr><td>502 <code>provider_unavailable</code></td><td>Every rung failed; retry with backoff</td></tr>
+        <tr><td>503</td><td>Not ready; retry</td></tr>
+        <tr><td>500 <code>internal_error</code></td><td>Bug; report the request id</td></tr>
+      </table>
+      <h3 style="margin-top:3mm">finish_reason</h3>
+      <p><code>stop</code>, <code>length</code> (cut off at <code>max_tokens</code>: treat structured output as invalid),
+      <code>refusal</code>, <code>other</code>, the same for every provider.</p>
+      <h3>Cost</h3>
+      <p><code>cost_usd</code> is 0 for local models and cache hits. Prices are USD per million tokens.</p>
+    </div>
+  </div>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>9</span></footer>
+</section>
+
+<!-- 10 · GKE deployment --------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>9 · GKE deployment</h2><span class="lead">Staging and production on GCP: in-cluster only</span><span class="sec">DevOps</span></header>
+  <figure class="tall"><img src="diagrams/08-gke.svg" alt="GKE deployment"></figure>
+  <ol class="notes">
+    <li><b>Consumers</b>Pods in the listed namespaces only; the NetworkPolicy refuses everyone else.</li>
+    <li><b>Service</b>ClusterIP. No Ingress and no public load balancer.</li>
+    <li><b>Deployment</b>Hardened pods, HPA, PDB, zone spread; <code>preStop</code> plus a grace period lets in-flight calls finish.</li>
+    <li><b>Config</b>Routing, pricing and policy passed with <code>--set-file</code>; a change rolls the pods without a new image.</li>
+    <li><b>Secrets</b>Secret Manager mounted by the GKE add-on (CSI) as files in <code>SECRETS_DIR</code>; nothing secret in Kubernetes or GitHub.</li>
+    <li><b>Model servers</b>Run in their own namespace, owned separately; the gateway only gets their URLs from values.</li>
+    <li><b>Secret Manager</b>Consumer tokens, provider keys, Redis URL and CA. <code>deploy/gke/bootstrap-secrets.sh</code> loads and rotates them.</li>
+    <li><b>Memorystore</b>Shared cache, rate limits and spend across pods, with AUTH and TLS on a private IP.</li>
+  </ol>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>10</span></footer>
+</section>
+
+<!-- 11 · Delivery --------------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>10 · Delivery pipeline</h2><span class="lead">From a commit to production, and the one-time setup per environment</span><span class="sec">DevOps</span></header>
+  <figure><img src="diagrams/09-delivery.svg" alt="Delivery pipeline"></figure>
+  <ol class="notes three">
+    <li><b>CI = make verify</b>The same gates run on a laptop and in CI, so a green laptop predicts a green build.</li>
+    <li><b>Build once</b>One image per release, pushed to staging's registry and tested there.</li>
+    <li><b>Human approval</b>The <code>prod</code> GitHub environment requires a reviewer; promotion copies the exact digest staging tested.</li>
+    <li><b>Terraform</b>Memorystore, secrets and IAM, Workload Identity; optionally the VPC, NAT, Autopilot cluster and registry.</li>
+    <li><b>Tokens</b>One per consumer, issued into Secret Manager. Rotation is two-phase (<code>--rotate</code>, then <code>--retire-old</code>) with no downtime.</li>
+  </ol>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>11</span></footer>
+</section>
+
+<!-- 12 · Environments ----------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>11 · Environments and gates</h2><span class="lead">Where it runs, and the command that proves each one</span><span class="sec">Assurance</span></header>
+  <figure class="short"><img src="diagrams/10-environments.svg" alt="Environments and gates"></figure>
+  <div class="cols three" style="margin-top:4mm">
+    <div><h3>make verify</h3><p>Lint, mypy strict, tests with a 90% coverage floor, OpenAPI drift, lock freshness,
+    dependency audit, shellcheck, hadolint, chart and Terraform validation. Exactly what CI runs.</p></div>
+    <div><h3>Runtime gates</h3><p><code>integration-test</code> and <code>kind-test</code> make real calls per grant:
+    401 for an unknown token, 200/403 per grant, pins, embedding names, streaming, readiness, Redis, and (kind) the
+    NetworkPolicy block. <code>gke-smoke</code> runs the same checks inside GKE after each deploy.</p></div>
+    <div><h3>Settings</h3><p>Prefix <code>AIR_MODEL_GATEWAY_</code>, <code>__</code> for nesting
+    (<code>AIR_MODEL_GATEWAY_OLLAMA__BASE_URL</code>). Env beats <code>SECRETS_DIR</code> files beats <code>.env</code>.
+    <code>.env.example</code> documents every key.</p></div>
+  </div>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>12</span></footer>
+</section>
+
+<!-- 13 · Observability ---------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>12 · Observability and operations</h2><span class="lead">What to watch, and what to do when it moves</span><span class="sec">Operations</span></header>
+  <div class="cols three" style="flex:1">
+    <div>
+      <h3>Metrics (prefix <code>air_model_gateway_</code>)</h3>
+      <table>
+        <tr><td><code>requests_total</code></td><td>route, method, status</td></tr>
+        <tr><td><code>model_tokens_total</code></td><td>provider, model, kind</td></tr>
+        <tr><td><code>model_cost_usd_total</code></td><td>provider, model</td></tr>
+        <tr><td><code>service_cost_usd_total</code></td><td>by calling service</td></tr>
+        <tr><td><code>model_unpriced_total</code></td><td>model missing from pricing</td></tr>
+        <tr><td><code>provider_timeouts_total</code></td><td>attempts past the deadline</td></tr>
+        <tr><td><code>chain_retries_total</code></td><td>extra passes over a chain</td></tr>
+        <tr><td><code>circuit_skips_total</code></td><td>rungs skipped, breaker open</td></tr>
+        <tr><td><code>circuit_open</code></td><td>1 while a breaker is open</td></tr>
+        <tr><td><code>provider_quota_rejected_total</code></td><td>rungs skipped, quota spent</td></tr>
+        <tr><td><code>ratelimited_total</code></td><td>requests over the rate</td></tr>
+        <tr><td><code>budget_rejected_total</code></td><td>requests over the budget</td></tr>
+        <tr><td><code>redis_errors_total</code></td><td>degraded to memory</td></tr>
+        <tr><td><code>streams_total</code></td><td>completed, error, client_disconnected</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Audit line (one per served call)</h3>
+<pre>{
+  "event": "model.call",
+  "service": "air-rag",
+  "operation": "embed",
+  "model_choice": "local-768-v1",
+  "provider": "ollama",
+  "model": "nomic-embed-text",
+  "tokens": 42, "cost_usd": 0.0,
+  "cached": false, "finish_reason": null,
+  "request_id": "…", "severity": "INFO"
+}</pre>
+      <p>JSON lines with a Cloud Logging severity. Filter on <code>service</code>, <code>model</code> or
+      <code>request_id</code>; a caller's <code>X-Request-ID</code> ties its logs to the gateway's.</p>
+      <h3>Alerts to create first</h3>
+      <table>
+        <tr><td><code>circuit_open == 1</code> for 5 min</td><td>A model is down</td></tr>
+        <tr><td>rising <code>redis_errors_total</code></td><td>Running degraded</td></tr>
+        <tr><td><code>model_unpriced_total</code> &gt; 0</td><td>A model has no price</td></tr>
+        <tr><td>5xx share of <code>requests_total</code></td><td>Chains exhausted</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Troubleshooting</h3>
+      <table>
+        <tr><th>Symptom</th><th>Look at</th></tr>
+        <tr><td>502 naming every rung</td><td>Model servers up? Keys set? <code>/v1/ready</code>, breaker metrics</td></tr>
+        <tr><td>403 on a call</td><td>The service's entry in <code>policy.&lt;env&gt;.yaml</code>; <code>/v1/capabilities</code></td></tr>
+        <tr><td>422 <code>invalid_model_choice</code></td><td>Name not published, or provider not in the class</td></tr>
+        <tr><td>429 <code>budget_exceeded</code></td><td><code>daily_budget_usd</code>; resets at 00:00 UTC</td></tr>
+        <tr><td>Slow answers</td><td><code>provider_timeouts_total</code>; a slow first rung; Ollama loaded at the right context</td></tr>
+        <tr><td>Answers changed after a deploy</td><td>The class's chain in <code>routing.yaml</code>; tune one service with <code>overrides</code></td></tr>
+        <tr><td>Pod not ready</td><td>No provider answers; Redis never blocks readiness</td></tr>
+      </table>
+      <p class="muted" style="margin-top:2mm">Full table: <code>docs/overview.md</code> §9. Runbook: <code>docs/03-deployment.md</code> §5.</p>
+    </div>
+  </div>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>13</span></footer>
+</section>
+
+<!-- 14 · Repository map ---------------------------------------------------- -->
+<section class="page">
+  <header class="bar"><h2>13 · Repository map and ownership</h2><span class="lead">Where things live, and who changes them</span><span class="sec">Handover</span></header>
+  <div class="cols three" style="flex:1">
+    <div>
+      <h3>Layout</h3>
+<pre>air-model-gateway/
+├─ src/air_model_gateway/
+│  ├─ main.py          composition root
+│  ├─ config.py        settings
+│  ├─ api/             middleware, routes,
+│  │                   model_calls, errors
+│  ├─ gateway/         catalog, router,
+│  │  │                resilience, cache, cost
+│  │  └─ providers/    one adapter each
+│  ├─ policy/          engine, ratelimit, budget
+│  ├─ security/        service tokens
+│  ├─ schemas/         wire + internal contracts
+│  └─ observability/   metrics, logging
+├─ src/air_model_gateway_client/
+├─ tests/              one file per concern
+├─ deploy/
+│  ├─ routing.yaml  pricing.yaml  policy/
+│  ├─ helm/  gke/  terraform/
+│  └─ local/  integration, kind, prometheus
+├─ docs/               PDF, guides, contract
+└─ Makefile  Dockerfile  docker-compose.yml</pre>
+    </div>
+    <div>
+      <h3>Who changes what</h3>
+      <table>
+        <tr><th>Change</th><th>Where · how</th></tr>
+        <tr><td>Which models serve a class</td><td><code>deploy/routing.yaml</code> · edit, deploy</td></tr>
+        <tr><td>A price</td><td><code>deploy/pricing.yaml</code> · edit, deploy</td></tr>
+        <tr><td>A grant, rate, budget, quota</td><td><code>deploy/policy/policy.&lt;env&gt;.yaml</code> · edit, deploy</td></tr>
+        <tr><td>A new embedding model</td><td>New name in <code>routing.yaml</code>; consumers re-index</td></tr>
+        <tr><td>Infrastructure</td><td><code>deploy/terraform</code> · plan, apply</td></tr>
+        <tr><td>Chart or values</td><td><code>deploy/helm</code>, <code>deploy/gke</code> · <code>make gke-validate kind-up kind-test</code></td></tr>
+        <tr><td>Wire contract</td><td><code>schemas/</code> · <code>make openapi</code>, client, integration guide</td></tr>
+        <tr><td>A provider</td><td>Adapter, <code>Provider</code> member, wiring, prices, tests</td></tr>
+        <tr><td>A dependency</td><td><code>pyproject.toml</code> · <code>make lock verify</code></td></tr>
+      </table>
+      <p class="muted" style="margin-top:2mm">Checklists for each: <code>AGENTS.md</code> "Change checklists".</p>
+    </div>
+    <div>
+      <h3>Design principles</h3>
+      <table>
+        <tr><td><b>Standalone</b></td><td>No other AIR service at runtime.</td></tr>
+        <tr><td><b>Classes, not models</b></td><td>Callers state intent; the owner picks models.</td></tr>
+        <tr><td><b>Config, not code</b></td><td>Models, prices and grants change without a release.</td></tr>
+        <tr><td><b>Fail closed</b></td><td>Outside local, nothing is allowed unless granted.</td></tr>
+        <tr><td><b>Degrade, never fail</b></td><td>Redis is optional; every user falls back.</td></tr>
+        <tr><td><b>One retry layer</b></td><td>The router; SDK retries are off.</td></tr>
+        <tr><td><b>Stateless</b></td><td>No conversations kept; callers own history.</td></tr>
+        <tr><td><b>One contract</b></td><td><code>docs/openapi.json</code>, checked against the code.</td></tr>
+      </table>
+      <h3 style="margin-top:3mm">Regenerating this document</h3>
+      <p><code>make design</code> redraws <code>docs/design/diagrams/*.svg</code> from <code>diagrams.py</code> and prints
+      <code>docs/design/design.html</code> to <code>docs/air-model-gateway-design.pdf</code> (needs Google Chrome).</p>
+    </div>
+  </div>
+  <footer><span>AIR Model Gateway · Visual Design</span><span>14</span></footer>
+</section>
+
+</body>
+</html>

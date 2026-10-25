@@ -193,6 +193,9 @@ air-model-gateway/
 │   ├── 04-integration.md         For consuming teams: access, calls, errors, retries
 │   ├── 05-handover.md            Assurance: gates, traceability, findings, open items
 │   ├── 06-consumer-migration.md  Per-service steps to the new routes and streaming
+│   ├── air-model-gateway-design.pdf  Visual design, printable (`make design`)
+│   ├── design/                   Its source: diagrams.py draws diagrams/*.svg,
+│   │                             design.html lays out the pages
 │   └── openapi.json              The API contract, generated (`make openapi`), tested
 │
 ├── src/air_model_gateway_client/  Reference Python client: its own import package (no

@@ -60,6 +60,12 @@ ignore = [
     "N818",   # HTTP-status exceptions use conventional names (Unauthorized, Forbidden, …)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# The diagram generator draws sentences onto the page: one string per drawn
+# line, so splitting a literal would change the drawing. Its en dashes (3–10
+# pods) are typography, not a mistyped hyphen.
+"docs/design/diagrams.py" = ["E501", "RUF001"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
