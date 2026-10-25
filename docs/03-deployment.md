@@ -207,8 +207,14 @@ Managed Prometheus scrapes `/metrics` (`PodMonitoring`). Every metric is listed 
 - `air_model_gateway_circuit_open == 1` for 5 minutes: a model is down.
 - A rise in `rate(air_model_gateway_redis_errors_total[5m])`: running degraded.
 - `increase(air_model_gateway_model_unpriced_total[1h]) > 0`: uncounted spend.
-- `increase(air_model_gateway_adapter_errors_total[1h]) > 0`: an adapter bug (often an
-  SDK change). Failover hides it from callers, usually at a higher price.
+- `increase(air_model_gateway_rung_failures_total{reason="auth"}[15m]) > 0`: a provider
+  refused the gateway's key or account (revoked, expired, out of credit). Failover hides
+  it from callers, usually at a higher price; `/v1/ready` shows the provider false.
+- `increase(air_model_gateway_rung_failures_total{reason="adapter"}[1h]) > 0`: an
+  adapter bug (often an SDK change), hidden by failover in the same way.
+- p95 of `air_model_gateway_request_duration_seconds` per route above its SLO.
+- More than one `revision` in `air_model_gateway_build_info` after a rollout finished:
+  replicas running different builds.
 - A 5xx ratio from `air_model_gateway_requests_total` per route.
 - A rising share of `air_model_gateway_streams_total{outcome="error"}`: streams
   failing after their first token.

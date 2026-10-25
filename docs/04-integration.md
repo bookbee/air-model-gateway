@@ -155,7 +155,7 @@ Every error is `application/problem+json` with a stable `code` and the `request_
 | 422 | `provider_rejected` | Every model in the chain refused the request as invalid (e.g. too long for it); `detail` has the providers' reasons | No: change the request |
 | 429 | `rate_limited` | Your rate limit, or every rung of the chain throttled (by a provider or the gateway's provider quota) | Yes, with backoff |
 | 429 | `budget_exceeded` | Your service's daily budget is spent | No: stop until `Retry-After` (next UTC day); cache hits still work |
-| 502 | `provider_unavailable` | Every model in the chain failed for a reason other than your request (outage, timeout); `detail` lists each | Yes, with backoff |
+| 502 | `provider_unavailable` | Every model in the chain failed for a reason other than your request (outage, timeout, or a provider refusing the gateway's own key, which is the gateway owner's to fix); `detail` lists each | Yes, with backoff |
 | 503 | (no body contract) | A proxy or a gateway with no reachable provider | Yes, with backoff |
 | 500 | `internal_error` | A gateway bug: report it with the `request_id` | Once at most |
 
@@ -296,6 +296,10 @@ gateway's. Every error body carries it too.
 - **The reference client** `air_model_gateway_client` in this repo shows the full
   contract in about 150 lines: auth, `request_id` propagation, errors as exceptions, and
   `retryable` (false for `budget_exceeded`).
+
+**Which build answered.** `GET /v1/health` returns `version` and `revision` (the
+gateway's git revision; `-dirty` means it was built from uncommitted changes). Record
+the revision with any test result or incident report.
 
 When the gateway's contract changes, `docs/openapi.json` changes in the same commit,
 and `tests/test_openapi.py` fails if anyone forgets. Watch that file for diffs.

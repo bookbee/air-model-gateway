@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+import yaml
 
 from air_model_gateway.api.v1 import model_calls
 from air_model_gateway.config import PolicySettings, SecuritySettings, Settings
@@ -332,7 +334,7 @@ async def test_embed_calls_are_audited(monkeypatch: pytest.MonkeyPatch) -> None:
     assert call["service"] == "air-classifier-service"
 
 
-async def test_unlisted_service_is_allowed_locally_but_denied_in_prod() -> None:
+async def test_unlisted_service_is_allowed_locally_but_denied_in_prod(tmp_path: Path) -> None:
     """The shipped local policy sets default_allow: true. In prod that flag is
     ignored, so a valid token for a service with no explicit grant gets 403."""
     router = _FakeRouter(result=ProviderResult(model="m", content="ok"))
@@ -342,7 +344,18 @@ async def test_unlisted_service_is_allowed_locally_but_denied_in_prod() -> None:
     async for client in _client(router, Environment.LOCAL):
         assert (await client.post("/v1/generate", headers=ghost, json=payload)).status_code == 200
 
-    async for client in _client(router, Environment.PROD):
+    # The local file as it stands, plus the budgets prod requires (main.py).
+    doc = yaml.safe_load(Path("deploy/policy/policy.local.yaml").read_text())
+    for service in doc["services"].values():
+        service["daily_budget_usd"] = 100.0
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(yaml.safe_dump(doc))
+    settings = _settings(Environment.PROD)
+    settings.policy.config_path = str(policy)
+    app = create_app(settings)
+    app.state.router = router
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.post("/v1/generate", headers=ghost, json=payload)
         assert r.status_code == 403
         assert r.json()["code"] == "policy_denied"

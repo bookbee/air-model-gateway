@@ -26,6 +26,17 @@ is fixed**, so every finding becomes a permanent check:
    exactly what was tested.
 5. **Runtime behaviour is checked where it runs.** Smoke tests on the production chart
    (kind) and the local integration stack, against real providers and real consumers.
+6. **Consumers check the contract from outside.** air-web-console's `gateway-check` make target
+   sends its contract scenarios through its own proxy to a running
+   gateway. Its `bugs/model-gateway/` folder holds one file per finding, with a
+   scenario that keeps failing until the fix lands.
+7. **Every result names its build.** `/v1/health` reports the git `revision`
+   (`-dirty` for uncommitted code). A result without one proves nothing: during review
+   an old process on the same port answered a test run while the files had changed.
+
+Each finding becomes a test here, or a scenario in the console, or both. A fix also
+creates new edges (MG-009 came out of the MG-005 fix), so a release is decided by the
+gate in §2a, run on one frozen commit. "The last review found nothing" doesn't count.
 
 ## 2. The gates
 
@@ -47,6 +58,24 @@ is fixed**, so every finding becomes a permanent check:
 **Definition of done for any change:** `make verify` passes; if the change affects
 runtime behaviour, deployment or a consumer-visible contract, the kind and integration smoke
 tests pass too; the docs describing the change are updated in the same commit.
+
+## 2a. Release and handover gate
+
+Run in order on one commit (tag it, e.g. `v0.2.0-rc1`), with one session per repository.
+Any failing step stops the release.
+
+| # | Step | Pass when |
+|---|---|---|
+| 1 | Freeze: commit and tag; `git status` clean | `/v1/health` `revision` has no `-dirty` |
+| 2 | `make verify` | "verify: all gates passed" |
+| 3 | `make kind-up kind-test` (prod values) and `make integration-up integration-test` (staging config) | All gateway checks pass; consumer checks pass for every migrated consumer |
+| 4 | One gateway on `:8083` (`lsof -nP -iTCP:8083 -sTCP:LISTEN`), started without `--reload`; then air-web-console's `gateway-check` make target | Contract all pass; its report header shows the tag's revision |
+| 5 | Bugs: air-web-console `bugs/model-gateway/README.md` | No open High; each Medium `verified` or `wont-fix` with a reason |
+| 6 | Owner decisions (§7) | Committed values, not starting values |
+| 7 | Record evidence | §5 below updated with the date, revision and results; the console's `last-run-*.txt` committed |
+
+The console's `bugs/model-gateway/READINESS.md` is the consumer's copy of this gate,
+with where each step stands.
 
 ## 3. Working with any harness or spec-driven workflow
 
@@ -77,6 +106,10 @@ mechanical drift, but not the reasoning. Write the decision down.
 overwrite each other. A change another repository needs goes to that repository's own
 session.
 
+**Anything learned goes into a file and a check**, never only a chat, an agent's memory
+or a session transcript. If a lesson can't be a test, it goes in the comment where the
+code makes the choice, or in §8.
+
 ## 4. Traceability
 
 | Goal (`00-plan.md`) | Where | Proven by |
@@ -91,19 +124,23 @@ session.
 | G8 Standalone | `main.py`, deploy | No AIR imports or URLs in `src/`; kind runs with nothing else |
 | G9 Multi-project governance | `schemas/policy.py`, `policy/budget.py`, router admission | `test_governance.py`, `test_models.py`, `test_gateway_config.py`; kind and integration smoke (model-choice rules) |
 
-## 5. Last verification (2026-10-25)
+## 5. Last verification (2026-10-25, revision `6357b7a992e6-dirty`)
 
-On a laptop, with real Ollama, llama.cpp, Gemini and Anthropic:
-- **`make verify`:** every gate passed; coverage above the floor; `pip-audit` found no
-  known vulnerabilities.
-- **`make integration-test`:** all checks passed. Two replicas share Redis, policy is
-  enforced, model choices are checked against grants, and `finish_reason` is
-  normalized. The consumer checks (live calls from air-classifier-service and
-  air-orchestrator-service) fail until each consumer has moved to `/v1/generate` and
-  `/v1/embed` ([06-consumer-migration.md](06-consumer-migration.md)).
-- **`make kind-test`:** all checks passed with production values, TLS Redis and the
-  NetworkPolicy block.
-- **Resilience, exercised on the same stacks:**
+On a laptop, with real Ollama, llama.cpp, Gemini and Anthropic. The tree was the
+`6357b7a` commit plus three uncommitted files (`.env.example`, `docs/openapi.json`,
+`tests/test_routes.py`), so this is a release candidate, not a release.
+- **Unit and contract tests:** 343 passed.
+- **air-web-console's `gateway-check`** (one gateway on `:8083`, no reload):
+  contract 34/34, all 8 known-gap scenarios (MG-001 to MG-005) passing.
+- **MG-009, live,** with an invalid Gemini key: a pin is 502 naming the key problem;
+  `cloud` fails over to Anthropic; `/v1/ready` reports `gemini: false`;
+  `rung_failures_total{reason="auth"}` counts every refused call.
+- **`make integration-test`** (staging policy with budgets, two replicas, Redis): all 18
+  gateway checks passed. The consumer check for air-orchestrator-service fails because
+  that service still calls `/v1/inference` (§7).
+- **`make kind-test`** (prod policy with budgets, TLS Redis, NetworkPolicy): all checks
+  passed.
+- **Resilience,** last exercised on the same stacks before these fixes and not re-run:
   - a rolling restart under continuous load failed 0 of 1,331 requests;
   - with Redis frozen, calls were still served, readiness was unaffected, and recovery
     was automatic;
@@ -111,8 +148,8 @@ On a laptop, with real Ollama, llama.cpp, Gemini and Anthropic:
 
 Not verifiable without GCP: Terraform apply, the Secret Manager add-on, Memorystore's
 CA, Managed Prometheus, and CI's Workload Identity Federation
-([03-deployment.md](03-deployment.md) §7). Re-run this section's commands and update
-the date before each handover or release.
+([03-deployment.md](03-deployment.md) §7). Re-run the gate in §2a and update this
+section before each handover or release.
 
 ## 6. Risks and their guards
 
@@ -128,7 +165,10 @@ that fails if the guard is removed. Read this before "simplifying" any of them.
 | Gateway bugs invisible to alerts | The middleware renders and counts unhandled 500s, with the request id | `test_governance.py` |
 | Unbounded metric series (random URLs, caller-chosen model names) | Fixed route labels with one `<unmatched>`; callers choose classes, not models (`pin` is granted) | `test_governance.py` |
 | One busy service exhausting a shared provider account | `provider_quotas`, one bucket per provider across services | `test_governance.py`, `test_gateway.py` |
-| Runaway spend | `daily_budget_usd` per service; unpriced models counted | `test_governance.py`, `test_gateway_config.py` |
+| Runaway spend | `daily_budget_usd` per service, required outside local for any service that can reach a paid model; unpriced models counted | `test_governance.py`, `test_gateway_config.py` |
+| A revoked or invalid provider key silently moving traffic to a pricier provider, or blamed on the caller | Account failures are `auth` (502, never `rejected`), counted in `rung_failures_total`, and turn the provider false in `/v1/ready` | `test_gateway.py` |
+| Embedding vectors filed under the wrong text | One vector per input text is checked before the answer leaves | `test_governance.py` |
+| Not knowing which code answered a test or an incident | `revision` in `/v1/health`, `/v1/capabilities`, the startup log and `build_info` | `test_system.py` |
 | A misconfigured deploy that "works" but answers 401/403 to everyone | `ConfigError` at startup outside local | `test_governance.py` |
 | A routing or policy change silently breaking a consumer | `CONSUMERS` table: every class, embedding model and grant each consumer uses, in every policy file | `test_gateway_config.py` |
 | A class quietly sending data somewhere it promised not to | `local` chains may only use local providers, `cloud` only cloud ones; checked when routing loads | `test_gateway_config.py` |
@@ -147,8 +187,12 @@ that fails if the guard is removed. Read this before "simplifying" any of them.
 [06-consumer-migration.md](06-consumer-migration.md).
 
 **Decisions for the owner:**
-- Values for `provider_quotas` and `daily_budget_usd` in `policy.staging.yaml` and
-  `policy.prod.yaml`. The mechanisms are live, but no limits are set.
+- `provider_quotas` and `daily_budget_usd` in `policy.staging.yaml` and
+  `policy.prod.yaml` hold **starting values** (marked in the files). Set them from each
+  provider account's limits and from observed spend. A budget is required for any
+  service that can reach a paid model: the gateway won't start without one.
+- SLOs: availability and p95 latency per route and class, on
+  `requests_total` and `request_duration_seconds`.
 - The repository's canonical URL: `pyproject.toml` and the chart point at
   `github.com/bookbee/air-model-gateway`; the GitHub repository should carry that name.
 
@@ -158,7 +202,7 @@ that fails if the guard is removed. Read this before "simplifying" any of them.
 |---|---|
 | air-classifier-service | Forward `X-Request-ID` to the gateway; its T3 budget (8 s) is below Gemini Flash's 7–12 s with thinking |
 | air-tools, air-rag | Forward `X-Request-ID` |
-| air-web-console | Its proxy echoes the gateway `X-API-Key` to the browser; its local dev token is `air-client-dev`, not its service name |
+| air-web-console | Its local dev token is `air-client-dev`, not its service name. Add a `staging` target pointing at `:9083`, so its `gateway-check` target also runs against the staging config |
 | air-orchestrator-service | A failed model call returns HTTP 200 `degraded` with an empty `degraded` list, and stays ready |
 | All consumers | Move to `POST /v1/generate` / `POST /v1/embed`; handle 429 `budget_exceeded` as "stop until Retry-After", not as a retryable throttle |
 
@@ -189,3 +233,10 @@ and that are easy to trip over:
   - Generated secrets must not end in a newline.
 - **`kind create` switches the current kubectl context;** `deploy/local/kind/up.sh`
   restores it.
+- **Providers disguise account failures.** Google reports an invalid key as
+  `400 INVALID_ARGUMENT` (`API_KEY_INVALID`), Anthropic an empty account as a 400, and
+  OpenAI no credit as a 429 (`insufficient_quota`). `_common.is_auth_failure` lists
+  them. Add any new one there, with a test.
+- **Know which process answered.** `--reload` and a second `make run` leave several
+  gateways bound to `:8083`, one serving older code. For a test run, start a single
+  process without `--reload` and check `/v1/health`'s `revision`.

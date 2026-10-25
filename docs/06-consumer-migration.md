@@ -71,6 +71,10 @@ reports MG-001 to MG-008), all additive or tightening:
   `code: not_found`.
 - **No key is 401 whatever the body**, even when the body isn't valid JSON.
 - **Streaming:** if `done` has `refusal: true`, discard the deltas already shown.
+- **A refused provider key is 502, not 422** (MG-009): a pin to a provider whose key
+  the gateway can't use is the gateway's fault.
+- **`/v1/health` and `/v1/capabilities` add `revision`** (MG-010), the gateway build's
+  git revision. Record it with test results.
 
 To verify locally: `make integration-up` in air-model-gateway, point the service at
 `http://localhost:9083` with its token from `deploy/local/integration/tokens.env`, run

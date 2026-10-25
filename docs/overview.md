@@ -412,7 +412,10 @@ rotation. Scrape `GET /metrics`.
 - `air_model_gateway_circuit_open == 1` for minutes: a model is down.
 - Rising `air_model_gateway_redis_errors_total`: the gateway is running degraded.
 - Any `air_model_gateway_model_unpriced_total`: spend that isn't being counted.
-- Any `air_model_gateway_adapter_errors_total`: an adapter bug that failover is hiding.
+- Any `air_model_gateway_rung_failures_total` with `reason="auth"` (a provider refused
+  the gateway's key or account) or `reason="adapter"` (an adapter bug): failover hides
+  both from callers.
+- p95 of `air_model_gateway_request_duration_seconds` above its SLO.
 - A rising 5xx share of `air_model_gateway_requests_total`: failing chains or gateway bugs.
 - Any `air_model_gateway_budget_rejected_total` or
   `air_model_gateway_provider_quota_rejected_total`: a budget or quota is being hit.

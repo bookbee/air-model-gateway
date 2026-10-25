@@ -423,7 +423,9 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><td><code>service_cost_usd_total</code></td><td>by calling service</td></tr>
         <tr><td><code>model_unpriced_total</code></td><td>model missing from pricing</td></tr>
         <tr><td><code>provider_timeouts_total</code></td><td>attempts past the deadline</td></tr>
-        <tr><td><code>adapter_errors_total</code></td><td>adapter bugs hidden by failover</td></tr>
+        <tr><td><code>rung_failures_total</code></td><td>failed rungs by reason (auth, adapter, ...)</td></tr>
+        <tr><td><code>request_duration_seconds</code></td><td>latency per route, for SLOs</td></tr>
+        <tr><td><code>build_info</code></td><td>the revision each replica runs</td></tr>
         <tr><td><code>chain_retries_total</code></td><td>extra passes over a chain</td></tr>
         <tr><td><code>circuit_skips_total</code></td><td>rungs skipped, breaker open</td></tr>
         <tr><td><code>circuit_open</code></td><td>1 while a breaker is open</td></tr>
@@ -454,7 +456,8 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><td><code>circuit_open == 1</code> for 5 min</td><td>A model is down</td></tr>
         <tr><td>rising <code>redis_errors_total</code></td><td>Running degraded</td></tr>
         <tr><td><code>model_unpriced_total</code> &gt; 0</td><td>A model has no price</td></tr>
-        <tr><td><code>adapter_errors_total</code> &gt; 0</td><td>An adapter bug (often an SDK change)</td></tr>
+        <tr><td><code>rung_failures_total{reason="auth"}</code> &gt; 0</td><td>A provider key or account refused</td></tr>
+        <tr><td><code>rung_failures_total{reason="adapter"}</code> &gt; 0</td><td>An adapter bug (often an SDK change)</td></tr>
         <tr><td>5xx share of <code>requests_total</code></td><td>Chains exhausted</td></tr>
       </table>
     </div>

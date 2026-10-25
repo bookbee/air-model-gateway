@@ -67,6 +67,9 @@ consumer reaches directly, in every environment.
 | Release flow | Build once, deploy staging by digest, promote the same digest to prod after approval | Prod runs exactly what staging tested |
 | Dependencies | `uv.lock`; image and dev installs from hash-checked exports | The image ships exactly what the tests ran against |
 | Spend control | Per-service daily budget (soft, 429 `budget_exceeded`) and provider quotas across services | Shared provider accounts and budgets survive many projects on one gateway |
+| Budgets required | Outside local, a service that can reach a paid model must have a `daily_budget_usd`, or the gateway won't start | On a shared gateway one uncapped service is unlimited spend on everyone's provider accounts |
+| Provider account failures | A refused key or account is the gateway's fault (502), counted per reason, and shown in readiness | Failover otherwise hides it, at a higher price, and a pin would blame the caller (MG-009) |
+| Build identity | Every build reports its git revision (`/v1/health`, `build_info`) | A test or an incident must be able to name the code that answered (MG-010) |
 | Cache scope | Per calling service | No project sees another's answers, at some cost in hit rate |
 | `finish_reason` | Normalized `stop/length/refusal/other`, raw kept | Consumers branch on one vocabulary whichever provider answered |
 | Misconfiguration | Refuse to start outside local | A crash-looping pod with a reason beats every call answering 401/403 |
@@ -88,7 +91,7 @@ In rough priority order:
 1. Stand up staging, then prod, on GCP following [03-deployment.md](03-deployment.md).
    Proves what a laptop can't: Terraform apply, the Secret Manager add-on, Memorystore
    TLS, Managed Prometheus and CI's Workload Identity Federation.
-2. Alerting on breaker, Redis-error, unpriced-model, budget and quota metrics.
+2. Alerting on breaker, Redis-error, unpriced-model, rung-failure (`auth`, `adapter`), budget and quota metrics, and latency SLOs.
 3. Replace `gemini-3.1-pro-preview` with its GA successor when available.
 4. Validate the self-hosted slot against vLLM or TGI on GPU hosts.
 5. OpenTelemetry trace export.

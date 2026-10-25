@@ -26,7 +26,8 @@ drift, lock freshness, dependency audit, shellcheck, hadolint, chart and Terrafo
 validation). It is exactly what CI runs. For changes that touch runtime behaviour,
 deployment or a consumer-visible contract, also run the runtime gates:
 `make kind-up kind-test` and `make integration-up integration-test`. `docs/05-handover.md` §2
-lists what each gate proves.
+lists what each gate proves; §2a is the release and handover gate (one frozen commit,
+then the console's contract scenarios, then the bug index).
 
 ## Commands
 
@@ -115,7 +116,9 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
   `make openapi`; update the reference client (`src/air_model_gateway_client`),
   `docs/04-integration.md`, and tell consuming teams (the diff of `docs/openapi.json`
   is the changelog).
-- **New consumer or grant:** all three `deploy/policy/policy.*.yaml`, the `CONSUMERS`
+- **New consumer or grant:** all three `deploy/policy/policy.*.yaml` (outside local, a
+  service that can reach a paid model needs `daily_budget_usd` or the gateway won't
+  start), the `CONSUMERS`
   table in `tests/test_gateway_config.py`, `deploy/local/integration/make-secrets.sh`
   and `smoke.sh`, `deploy/gke/bootstrap-secrets.sh`, `smoke.py`, `deploy/local/kind/up.sh`, the
   Terraform `consumers` variable, and `networkPolicy.allowedNamespaces` in the GKE
@@ -146,6 +149,14 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
 - The cache key covers every field that changes the question (schema included) and the
   calling service. Refusals and cut-off answers are never cached.
 - Future work is `docs/00-plan.md` §6; don't implement an item as a side effect.
+- Every finding (a review, a console bug report in air-web-console
+  `bugs/model-gateway/`) becomes a test, or a console scenario, in the same change as
+  its fix. A lesson that can't be a test goes in a comment or `docs/05-handover.md` §8.
+- A provider failure is the caller's (`rejected`, 422) only when the request is
+  invalid. A refused key or account is `auth` (502), however the provider spells it
+  (`_common.is_auth_failure`).
+- A test result means something only with its build: record `/v1/health`'s `revision`,
+  and run one gateway process per port.
 - One agent per repository at a time: two sessions editing the same files overwrite
   each other's work. Cross-repo changes go to that repo's own session.
 
