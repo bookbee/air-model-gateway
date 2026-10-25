@@ -124,23 +124,25 @@ code makes the choice, or in §8.
 | G8 Standalone | `main.py`, deploy | No AIR imports or URLs in `src/`; kind runs with nothing else |
 | G9 Multi-project governance | `schemas/policy.py`, `policy/budget.py`, router admission | `test_governance.py`, `test_models.py`, `test_gateway_config.py`; kind and integration smoke (model-choice rules) |
 
-## 5. Last verification (2026-10-26, revision `4dd28b76537b-dirty`)
+## 5. Last verification (2026-10-26, commit `40ee62b`)
 
-On a laptop, with real Ollama, llama.cpp, Gemini and Anthropic. The tree was the
-`4dd28b7` commit plus the MG-011 fix (Gemini thinking budget: `routing.yaml`
-`model_settings`, the Gemini adapter, schema, tests and docs), so this is a release
-candidate, not a release. Repeat it on the tag.
-- **`make verify`:** all gates passed; 354 tests, 95.21% coverage.
+On a laptop, with real Ollama, llama.cpp, Gemini and Anthropic, against `40ee62b`
+(revision `40ee62beb778`, clean), the release candidate. Tag that commit; a tag on a
+docs-only follow-up needs no re-run.
+- **`make verify`** on the committed tree: all gates passed; 354 tests, 95.21% coverage.
 - **air-web-console's `gateway-check`** (one gateway on `:8083`, no reload): contract
-  42/42; the MG-011 known gap (`gap-gemini-thinking-cap`) passing. Before the fix, on
-  the clean `4dd28b7`: 42/42, and the MG-006 to MG-010 manual repros all passed.
+  42/42; the MG-011 known gap (`gap-gemini-thinking-cap`) passing. On `4dd28b7`, before
+  the MG-011 fix: 42/42, and the MG-006 to MG-010 manual repros all passed.
 - **MG-011, live:** `pin` `gemini:gemini-2.5-flash` at `max_tokens` 120, 300 and 600
-  and uncapped: every answer complete (`stop`), about 26 output tokens and $0.00007
+  and uncapped: every answer complete (`stop`), about 30 output tokens and $0.00008
   (uncapped was 850 tokens and $0.0021); streamed the same; a structured `cloud` call
-  ~1.1 s.
+  ~1.1 s. Re-run on `40ee62b` with the same result.
 - **MG-009, live** (on `4dd28b7`, invalid Gemini key): a pin is 502 naming the key
   problem; `cloud` fails over to Anthropic; `/v1/ready` reports `gemini: false`;
   `rung_failures_total{reason="auth"}` counts every refused call.
+- **`make integration-test`** and **`make kind-test`** ran on the same tree just before
+  the commit (revision `4dd28b76537b-dirty`), which differed only in the `.cache/` tool
+  config:
 - **`make integration-test`** (staging policy with budgets, two replicas, Redis): all 18
   gateway checks passed.
 - **`make kind-test`** (prod policy with budgets, TLS Redis, NetworkPolicy): 17 of 17,
