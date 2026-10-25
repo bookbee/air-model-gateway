@@ -88,9 +88,10 @@ the service's own tests, then `make integration-test` in air-model-gateway.
 - **Truncation:** the existing check for `finish_reason == "length"` now works for
   every provider (Gemini and Anthropic used to report other spellings).
 - **Request id:** it does not forward `X-Request-ID` yet; add it.
-- **Timeout:** the T3 budget (8 s) is shorter than Gemini Flash takes with thinking
-  (7–12 s). Raise the budget, or have the classifier's `auto` lead with a faster
-  model (its override in air-model-gateway's `deploy/routing.yaml`).
+- **Timeout:** the T3 budget (8 s) was shorter than Gemini Flash took with thinking
+  (7–12 s). Its thinking is now off (`model_settings` in air-model-gateway's
+  `deploy/routing.yaml`), and a structured classification through `cloud` took about
+  1.1 s on 2026-10-26. Re-check the budget against your own prompts.
 - **Streaming:** not needed (structured, machine-read answers).
 
 ## air-orchestrator-service

@@ -183,8 +183,9 @@ the generation.
 
 The gateway forwards your schema and returns the model's JSON as `content`; it doesn't
 validate it. Parse and validate on your side. Treat a cut-off `finish_reason` or
-`refusal: true` as "no answer", and leave `max_tokens` at 300 or more, because thinking
-models spend part of it before answering.
+`refusal: true` as "no answer". `max_tokens` bounds the visible answer on every
+provider: where a thinking model runs with a thinking budget, the gateway adds that budget
+to your cap, and `usage.completion_tokens` includes the thinking you are billed for.
 
 ### Conversations and history
 

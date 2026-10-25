@@ -135,14 +135,19 @@ def _unbudgeted_services(settings: Settings) -> list[str]:
     return problems
 
 
-def _build_model_router(settings: Settings, admit: Admit | None = None) -> ModelRouter:
+def _build_model_router(
+    settings: Settings, catalog: ModelCatalog, admit: Admit | None = None
+) -> ModelRouter:
     providers: dict[Provider, ModelProvider] = {
         Provider.OLLAMA: OllamaProvider(
             settings.ollama.base_url, keep_alive=settings.ollama.keep_alive
         ),
         Provider.ANTHROPIC: AnthropicProvider(settings.providers.anthropic_api_key),
         Provider.OPENAI: OpenAIProvider(settings.providers.openai_api_key),
-        Provider.GEMINI: GeminiProvider(settings.providers.gemini_api_key),
+        Provider.GEMINI: GeminiProvider(
+            settings.providers.gemini_api_key,
+            thinking_budgets=catalog.doc.thinking_budgets(Provider.GEMINI),
+        ),
         Provider.SELF_HOSTED: SelfHostedProvider(
             settings.self_hosted.base_url, settings.self_hosted.api_key
         ),
@@ -224,7 +229,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     cache, limiter, ledger = _build_shared_state(settings, redis)
     catalog = ModelCatalog.load(settings.gateway.routing_config_path)
-    model_router = _build_model_router(settings, _provider_quota(policy, limiter))
+    model_router = _build_model_router(settings, catalog, _provider_quota(policy, limiter))
     prices = PriceBook.load(settings.gateway.pricing_config_path)
 
     @asynccontextmanager

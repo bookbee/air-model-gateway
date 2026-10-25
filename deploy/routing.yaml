@@ -127,3 +127,20 @@ overrides:
           model: claude-sonnet-5
         - provider: openai
           model: gpt-4o-mini
+
+# How a model is called, wherever it runs (any chain, an override, a pin), keyed
+# provider:model. Unknown fields fail at load.
+model_settings:
+  # thinking_budget (Gemini only): tokens the model may think before answering.
+  # Gemini counts thinking against the output cap, so the adapter adds the
+  # budget to the caller's max_tokens, which then bounds the visible answer.
+  # Left at Gemini's dynamic default, 2.5 Flash spent a whole 300-token cap
+  # thinking and returned half a sentence, and an uncapped one-sentence answer
+  # cost ~850 output tokens (MG-011). 0 turns thinking off: this model serves
+  # chat, classification and extraction for every consumer in `cloud` and
+  # `auto`, where an answer that arrives complete and cheap is worth more than
+  # deliberation. A service that needs reasoning gets a model with a budget
+  # set here, not thinking on this one. 2.5 Pro can't turn thinking off (its
+  # minimum is 128).
+  gemini:gemini-2.5-flash:
+    thinking_budget: 0

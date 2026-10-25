@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Annotated
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from air_model_gateway.constants import LOCAL_PROVIDERS, ModelClass, Provider
 
@@ -44,10 +44,33 @@ class ServiceRoutes(BaseModel):
     generate: dict[ModelClass, Chain] = Field(default_factory=dict)
 
 
+class ModelSettings(BaseModel):
+    """How one model is called, wherever it runs: in a class chain, an override
+    or a pin. Unknown fields fail at load, so a misspelt setting can't be
+    silently ignored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Gemini only. Tokens the model may spend thinking before it answers;
+    #: 0 turns thinking off (2.5 Flash allows it, 2.5 Pro doesn't). Unset
+    #: leaves the model's own dynamic budget. Gemini counts thinking against
+    #: `max_output_tokens`, so the adapter adds this budget to the caller's
+    #: `max_tokens`: the caller's cap then bounds the answer, as it does on
+    #: every other provider.
+    thinking_budget: int | None = Field(default=None, ge=0)
+
+
+#: Providers whose adapter sends `thinking_budget`. Anywhere else it would be
+#: ignored, so it is rejected at load instead.
+THINKING_PROVIDERS = frozenset({Provider.GEMINI})
+
+
 class RoutingDoc(BaseModel):
     generate: dict[ModelClass, Chain]
     embed: dict[str, EmbedModel] = Field(default_factory=dict)
     overrides: dict[str, ServiceRoutes] = Field(default_factory=dict)
+    #: Keyed `provider:model`, the pin syntax.
+    model_settings: dict[str, ModelSettings] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _consistent(self) -> RoutingDoc:
@@ -71,7 +94,31 @@ class RoutingDoc(BaseModel):
             is_local = spec.provider in LOCAL_PROVIDERS
             if is_local != (location == "local"):
                 raise ValueError(f"embed: '{name}' is {location} but {spec.provider.value} is not")
+        for key, settings in self.model_settings.items():
+            _check_model_settings(key, settings)
         return self
+
+    def thinking_budgets(self, provider: Provider) -> dict[str, int]:
+        """Model name → thinking budget, for one provider's adapter."""
+        budgets: dict[str, int] = {}
+        for key, settings in self.model_settings.items():
+            prefix, _, model = key.partition(":")
+            if prefix == provider.value and settings.thinking_budget is not None:
+                budgets[model] = settings.thinking_budget
+        return budgets
+
+
+def _check_model_settings(key: str, settings: ModelSettings) -> None:
+    prefix, sep, model = key.partition(":")
+    try:
+        provider = Provider(prefix)
+    except ValueError:
+        provider = None
+    if not sep or not model or provider is None:
+        raise ValueError(f"model_settings: '{key}' is not provider:model")
+    if settings.thinking_budget is not None and provider not in THINKING_PROVIDERS:
+        allowed = sorted(p.value for p in THINKING_PROVIDERS)
+        raise ValueError(f"model_settings.{key}: thinking_budget is only sent to {allowed}")
 
 
 def _check_location(where: str, cls: ModelClass, providers: list[Provider]) -> None:

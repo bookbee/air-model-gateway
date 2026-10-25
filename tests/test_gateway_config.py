@@ -16,7 +16,7 @@ from air_model_gateway.config import PolicySettings, Settings
 from air_model_gateway.constants import LOCAL_PROVIDERS, Action, Environment, ModelClass, Provider
 from air_model_gateway.gateway.cost import DEFAULT_PRICING, PriceBook
 from air_model_gateway.gateway.models import DEFAULT_ROUTING, ModelCatalog
-from air_model_gateway.main import _unbudgeted_services
+from air_model_gateway.main import _build_model_router, _unbudgeted_services
 from air_model_gateway.policy.engine import PolicyEngine
 from air_model_gateway.schemas.common import Principal
 from air_model_gateway.schemas.gateway import RoutingDoc
@@ -57,6 +57,36 @@ def test_shipped_routing_and_pricing_agree() -> None:
                 assert prices.price(provider, model, usage) > 0, (
                     f"{where}: {provider.value}:{model}"
                 )
+
+
+def test_shipped_routing_turns_thinking_off_on_gemini_flash() -> None:
+    """MG-011: gemini-2.5-flash leads `cloud` and follows Ollama in `auto`; with
+    thinking at Gemini's default, capped answers came back cut off."""
+    assert _catalog().doc.thinking_budgets(Provider.GEMINI) == {"gemini-2.5-flash": 0}
+
+
+@pytest.mark.parametrize(
+    ("settings", "why"),
+    [
+        ({"anthropic:claude-haiku-4-5": {"thinking_budget": 0}}, "only sent to"),
+        ({"gemini-2.5-flash": {"thinking_budget": 0}}, "not provider:model"),
+        ({"nope:model": {"thinking_budget": 0}}, "not provider:model"),
+        ({"gemini:gemini-2.5-flash": {"thinking_budget": -1}}, "greater than or equal"),
+        ({"gemini:gemini-2.5-flash": {"thinking_budgte": 0}}, "Extra inputs"),
+    ],
+    ids=["unsupported-provider", "no-provider", "unknown-provider", "negative", "misspelt"],
+)
+def test_model_settings_that_would_be_ignored_fail_at_load(
+    settings: dict[str, Any], why: str
+) -> None:
+    with pytest.raises(ValidationError, match=why):
+        RoutingDoc.model_validate({"generate": _CLASSES, "model_settings": settings})
+
+
+def test_the_gemini_adapter_gets_the_routing_files_budgets() -> None:
+    router = _build_model_router(Settings(), ModelCatalog.load(ROUTING))
+    gemini = router._providers[Provider.GEMINI]
+    assert gemini._thinking_budgets == {"gemini-2.5-flash": 0}  # type: ignore[attr-defined]
 
 
 def test_missing_config_falls_back_to_builtin(tmp_path: Path) -> None:

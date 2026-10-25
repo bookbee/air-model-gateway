@@ -124,22 +124,27 @@ code makes the choice, or in §8.
 | G8 Standalone | `main.py`, deploy | No AIR imports or URLs in `src/`; kind runs with nothing else |
 | G9 Multi-project governance | `schemas/policy.py`, `policy/budget.py`, router admission | `test_governance.py`, `test_models.py`, `test_gateway_config.py`; kind and integration smoke (model-choice rules) |
 
-## 5. Last verification (2026-10-25, revision `6357b7a992e6-dirty`)
+## 5. Last verification (2026-10-26, revision `4dd28b76537b-dirty`)
 
 On a laptop, with real Ollama, llama.cpp, Gemini and Anthropic. The tree was the
-`6357b7a` commit plus three uncommitted files (`.env.example`, `docs/openapi.json`,
-`tests/test_routes.py`), so this is a release candidate, not a release.
-- **Unit and contract tests:** 343 passed.
-- **air-web-console's `gateway-check`** (one gateway on `:8083`, no reload):
-  contract 34/34, all 8 known-gap scenarios (MG-001 to MG-005) passing.
-- **MG-009, live,** with an invalid Gemini key: a pin is 502 naming the key problem;
-  `cloud` fails over to Anthropic; `/v1/ready` reports `gemini: false`;
+`4dd28b7` commit plus the MG-011 fix (Gemini thinking budget: `routing.yaml`
+`model_settings`, the Gemini adapter, schema, tests and docs), so this is a release
+candidate, not a release. Repeat it on the tag.
+- **`make verify`:** all gates passed; 354 tests, 95.21% coverage.
+- **air-web-console's `gateway-check`** (one gateway on `:8083`, no reload): contract
+  42/42; the MG-011 known gap (`gap-gemini-thinking-cap`) passing. Before the fix, on
+  the clean `4dd28b7`: 42/42, and the MG-006 to MG-010 manual repros all passed.
+- **MG-011, live:** `pin` `gemini:gemini-2.5-flash` at `max_tokens` 120, 300 and 600
+  and uncapped: every answer complete (`stop`), about 26 output tokens and $0.00007
+  (uncapped was 850 tokens and $0.0021); streamed the same; a structured `cloud` call
+  ~1.1 s.
+- **MG-009, live** (on `4dd28b7`, invalid Gemini key): a pin is 502 naming the key
+  problem; `cloud` fails over to Anthropic; `/v1/ready` reports `gemini: false`;
   `rung_failures_total{reason="auth"}` counts every refused call.
 - **`make integration-test`** (staging policy with budgets, two replicas, Redis): all 18
-  gateway checks passed. The consumer check for air-orchestrator-service fails because
-  that service still calls `/v1/inference` (§7).
-- **`make kind-test`** (prod policy with budgets, TLS Redis, NetworkPolicy): all checks
-  passed.
+  gateway checks passed.
+- **`make kind-test`** (prod policy with budgets, TLS Redis, NetworkPolicy): 17 of 17,
+  and an unlisted namespace can't connect.
 - **Resilience,** last exercised on the same stacks before these fixes and not re-run:
   - a rolling restart under continuous load failed 0 of 1,331 requests;
   - with Redis frozen, calls were still served, readiness was unaffected, and recovery
@@ -200,7 +205,7 @@ that fails if the guard is removed. Read this before "simplifying" any of them.
 
 | Repo | Item |
 |---|---|
-| air-classifier-service | Forward `X-Request-ID` to the gateway; its T3 budget (8 s) is below Gemini Flash's 7–12 s with thinking |
+| air-classifier-service | Forward `X-Request-ID` to the gateway; re-check its T3 budget (8 s) now that Gemini Flash's thinking is off (~1.1 s for a structured `cloud` call, was 7–12 s) |
 | air-tools, air-rag | Forward `X-Request-ID` |
 | air-web-console | Its local dev token is `air-client-dev`, not its service name. Add a `staging` target pointing at `:9083`, so its `gateway-check` target also runs against the staging config |
 | air-orchestrator-service | A failed model call returns HTTP 200 `degraded` with an empty `degraded` list, and stays ready |
@@ -215,7 +220,10 @@ Facts about the providers and the tooling that the code and tests already accoun
 and that are easy to trip over:
 - **Provider behaviour drifts.**
   - Models are retired, so routing names must be checked against what each API serves.
-  - Thinking models (Gemini) spend part of `max_tokens` before the visible answer.
+  - Thinking models (Gemini) count thinking against the output cap. Left at Gemini's
+    dynamic budget, 2.5 Flash spent a whole 300-token cap thinking (MG-011), so
+    `routing.yaml` `model_settings` sets its `thinking_budget` (0) and the adapter adds
+    the budget to the cap. A new thinking model in a chain needs the same decision.
   - Anthropic rejects `system: null`, and its API version `2026-10-21` rejects sampling
     parameters, so `temperature` is not sent to it.
   - Verify a change live with `make run` and a real call, not only against fakes.

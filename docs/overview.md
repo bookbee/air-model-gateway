@@ -143,7 +143,8 @@ air-model-gateway/
 │
 ├── deploy/                       DevOps-owned configuration (edit + restart, no release)
 │   ├── routing.yaml              What each class (local, auto, cloud) and embedding model
-│   │                             means: ordered chains, per-service overrides
+│   │                             means: ordered chains, per-service overrides,
+│   │                             per-model settings (Gemini thinking budget)
 │   ├── pricing.yaml              USD per million tokens per model; local models are free
 │   ├── policy/
 │   │   ├── policy.local.yaml     Who may call what, and per-service rate limits (local)

@@ -98,6 +98,10 @@ In rough priority order:
 6. Policy write endpoints, if policy must change without a restart.
 7. Per-environment routing files (the setting already supports a different path per
    environment).
-8. A per-request deadline (`timeout_ms` on the wire) that bounds the whole chain.
+8. Report the failover path on each response (console MG-012): an `attempts` list of
+   `provider`, `model` and the failure reason code (never provider text), in the JSON
+   body and the stream's `done` event, `cache` on a hit, and the same on the audit line.
+   A contract addition; the router already collects the list and drops it on success.
+9. A per-request deadline (`timeout_ms` on the wire) that bounds the whole chain.
    Today each attempt has its own deadline, so a consumer with a tight budget relies on
    its own client timeout, and the gateway may finish and bill a call nobody awaits.

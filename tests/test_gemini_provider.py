@@ -98,10 +98,12 @@ def _response(
     )
 
 
-def _provider(response: Any, *, count: Any = None) -> tuple[GeminiProvider, _FakeModels]:
+def _provider(
+    response: Any, *, count: Any = None, thinking_budgets: dict[str, int] | None = None
+) -> tuple[GeminiProvider, _FakeModels]:
     from google.genai import types
 
-    provider = GeminiProvider("AIza-test")
+    provider = GeminiProvider("AIza-test", thinking_budgets=thinking_budgets)
     models = _FakeModels(response, count=count)
     provider._client = SimpleNamespace(aio=SimpleNamespace(models=models))
     provider._types = types
@@ -171,6 +173,40 @@ async def test_thinking_tokens_are_counted_as_completion() -> None:
     provider, _ = _provider(_response(candidate_tokens=10, thought_tokens=90))
     result = await provider.chat(_req([Message(role="user", content="x")]), "m")
     assert result.usage.completion_tokens == 100
+
+
+@pytest.mark.parametrize(
+    ("budget", "max_tokens", "expected_cap"),
+    [(0, 300, 300), (512, 300, 812), (512, None, None)],
+    ids=["off", "added-to-the-cap", "uncapped-stays-uncapped"],
+)
+async def test_a_configured_thinking_budget_is_sent_and_added_to_the_cap(
+    budget: int, max_tokens: int | None, expected_cap: int | None
+) -> None:
+    """MG-011: left to its dynamic budget, 2.5 Flash spent a whole 300-token cap
+    thinking. The configured budget goes out as thinking_config, and the cap the
+    caller set still bounds the visible answer."""
+    for streamed in (False, True):
+        provider, models = _provider(
+            [_response()] if streamed else _response(),
+            thinking_budgets={"gemini-2.5-flash": budget},
+        )
+        req = ChatRequest(messages=[Message(role="user", content="x")], max_tokens=max_tokens)
+        if streamed:
+            [_ async for _ in provider.chat_stream(req, "gemini-2.5-flash")]
+        else:
+            await provider.chat(req, "gemini-2.5-flash")
+        config = models.calls[0]["config"]
+        assert config.thinking_config.thinking_budget == budget
+        assert config.max_output_tokens == expected_cap
+
+
+async def test_a_model_without_a_budget_keeps_geminis_default() -> None:
+    provider, models = _provider(_response(), thinking_budgets={"gemini-2.5-flash": 0})
+    await provider.chat(_req([Message(role="user", content="x")]), "gemini-2.5-pro")
+    config = models.calls[0]["config"]
+    assert config.thinking_config is None
+    assert config.max_output_tokens == 256
 
 
 @pytest.mark.parametrize(

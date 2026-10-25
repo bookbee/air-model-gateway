@@ -126,7 +126,8 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
 - **Model, chain or price:** `deploy/routing.yaml` / `pricing.yaml` (read the inline
   rationale first; ordering is usually a decision). A `local` chain may only use local
   providers and a `cloud` chain only cloud ones (enforced at load). Never repoint a
-  published embedding name: publish a new version. Keep `models.DEFAULT_ROUTING` and
+  published embedding name: publish a new version. A thinking model (Gemini) added to a
+  chain needs a `model_settings` `thinking_budget` decision. Keep `models.DEFAULT_ROUTING` and
   `cost.DEFAULT_PRICING` roughly in sync (local fallback only).
 - **New provider:** an adapter in `gateway/providers/`, a `Provider` member, wiring in
   `main.py`, prices, a test file against a faked SDK, and docs §6 of the LLD.

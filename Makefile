@@ -421,5 +421,5 @@ verify: check lock-check lint-scripts audit gke-validate ## Every static gate (w
 
 .PHONY: clean
 clean: ## Remove the venv and tool caches
-	rm -rf $(VENV) .pytest_cache .ruff_cache .mypy_cache
+	rm -rf $(VENV) .cache
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

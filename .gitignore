@@ -40,11 +40,7 @@ build/
 dist/
 # Virtual environment (`make dev`) and tool caches
 .venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-.coverage.*
+.cache/
 coverage.xml
 htmlcov/
 # Terraform provider cache

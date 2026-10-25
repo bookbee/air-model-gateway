@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from typing import Any
 
 from air_model_gateway.constants import Provider
@@ -39,12 +39,22 @@ class GeminiProvider:
       usual way to write an optional field). ``response_json_schema`` takes
       standard JSON Schema, union types, ``anyOf`` and ``$defs``/``$ref`` included
       (checked live against gemini-2.5-flash), so the schema is sent as given.
+
+    **Thinking.** 2.5 models think before they answer, and Gemini counts those
+    tokens against ``max_output_tokens``. Left to its dynamic budget,
+    gemini-2.5-flash spent all of a 300-token cap thinking and returned a
+    cut-off half sentence (MG-011). So each model's ``thinking_budget`` comes
+    from ``model_settings`` in ``deploy/routing.yaml`` and is sent as
+    ``thinking_config``, and the budget is added to the caller's
+    ``max_tokens``: the cap then bounds the visible answer, as on every other
+    provider. A model with no configured budget keeps Gemini's default.
     """
 
     name = Provider.GEMINI
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, thinking_budgets: Mapping[str, int] | None = None) -> None:
         self._api_key = api_key
+        self._thinking_budgets = dict(thinking_budgets or {})
         self._client: Any = None
         self._types: Any = None
 
@@ -64,7 +74,7 @@ class GeminiProvider:
 
     async def chat(self, req: ChatRequest, model: str) -> ProviderResult:
         self._ensure()
-        contents, config = self._request(req)
+        contents, config = self._request(req, model)
         try:
             resp = await self._client.aio.models.generate_content(
                 model=model, contents=contents, config=config
@@ -83,7 +93,7 @@ class GeminiProvider:
         usage (thinking tokens included) and the finish reason. A blocked prompt
         is reported on the chunk that carries `prompt_feedback`."""
         self._ensure()
-        contents, config = self._request(req)
+        contents, config = self._request(req, model)
         last: Any = None
         blocked = False
         try:
@@ -102,10 +112,17 @@ class GeminiProvider:
             raise ProviderError(self.name, "stream ended without a response", retryable=True)
         yield _result(last, model, blocked=blocked)
 
-    def _request(self, req: ChatRequest) -> tuple[list[dict[str, Any]], Any]:
+    def _request(self, req: ChatRequest, model: str) -> tuple[list[dict[str, Any]], Any]:
         """Contents and config, shared by the plain and the streamed call."""
         system, contents = self._split(req)
-        config: dict[str, Any] = {"max_output_tokens": req.max_tokens}
+        budget = self._thinking_budgets.get(model)
+        cap = req.max_tokens
+        config: dict[str, Any] = {}
+        if budget is not None:
+            config["thinking_config"] = self._types.ThinkingConfig(thinking_budget=budget)
+            if cap is not None:
+                cap += budget
+        config["max_output_tokens"] = cap
         if system:
             config["system_instruction"] = system
         if req.temperature is not None:

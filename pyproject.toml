@@ -53,6 +53,8 @@ packages = ["src/air_model_gateway", "src/air_model_gateway_client"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+# Every tool cache lives under one gitignored .cache/ directory, not loose at the root.
+cache-dir = ".cache/ruff"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
@@ -74,6 +76,7 @@ plugins = ["pydantic.mypy"]
 mypy_path = "src"
 disallow_untyped_defs = true
 warn_unused_ignores = true
+cache_dir = ".cache/mypy"
 
 [[tool.mypy.overrides]]
 module = ["anthropic.*", "openai.*", "google.genai.*"]
@@ -83,9 +86,11 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
+cache_dir = ".cache/pytest"
 
 [tool.coverage.run]
 source = ["air_model_gateway", "air_model_gateway_client"]
+data_file = ".cache/coverage"
 
 [tool.coverage.report]
 # A floor, not a target: it stops coverage eroding unnoticed. Raise it when the

@@ -27,9 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 _SKIP = {
     ".venv",
     ".git",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
+    ".cache",
     ".terraform",
     "node_modules",
 }

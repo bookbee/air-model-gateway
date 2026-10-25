@@ -282,7 +282,10 @@ runs the chain the catalog returns:
 At load, every class must have a chain, a `local` chain may only use local providers
 (`ollama`, `llama.cpp`) and a `cloud` chain only cloud ones, and each embedding name
 must match `<local|cloud>-<dims>-v<version>` with its provider's location and its
-declared dimension. The response cache keys on the resolved chain, so changing what a
+declared dimension. `model_settings`, keyed `provider:model`, says how a model is
+called wherever it runs (any chain, override or pin); today only `thinking_budget`,
+for Gemini, where an unknown field, a malformed key or another provider fails at load.
+The response cache keys on the resolved chain, so changing what a
 class means makes earlier answers miss instead of being served from the old models.
 
 **Walking a chain (one pass).** For each rung:
@@ -382,7 +385,7 @@ is a `ProviderError`.
 | `ollama` | `format` = the JSON Schema | Plain HTTP; sends `keep_alive` on every call; an error's detail is the status plus Ollama's own reason from the body (`404 model 'x' not found`); a non-JSON body is a `ProviderError`; health = `/api/tags` |
 | `anthropic` | Forced tool whose `input_schema` is the schema | System messages become cacheable system blocks (`cache_prefix`); in a conversation (an assistant turn present) the last turn is also a cache breakpoint, so the next turn reads the history at the cache rate (one-shot calls aren't marked: a cache write bills above input); `system` sent only when set; `temperature` never sent (API version `2026-10-21` rejects sampling parameters); no embeddings |
 | `openai` | JSON mode plus schema in the system prompt | `max_completion_tokens` (gpt-5 and o-series reject `max_tokens`); `temperature` only when set; cached prompt tokens split out of `prompt_tokens`; `content_filter` is a refusal |
-| `gemini` | `response_json_schema`: standard JSON Schema, union types and `$defs`/`$ref` included (not `response_schema`, Gemini's OpenAPI subset, on which the SDK crashes for `"type": ["string", "null"]`) | Thinking tokens billed as completion; embeddings priced via a concurrent `count_tokens` call |
+| `gemini` | `response_json_schema`: standard JSON Schema, union types and `$defs`/`$ref` included (not `response_schema`, Gemini's OpenAPI subset, on which the SDK crashes for `"type": ["string", "null"]`) | `thinking_config.thinking_budget` from `model_settings` when set (0 for 2.5 Flash), and that budget added to `max_output_tokens`, so the caller's `max_tokens` bounds the visible answer: Gemini counts thinking against the cap (MG-011). Thinking tokens billed as completion; embeddings priced via a concurrent `count_tokens` call |
 | `llama.cpp` (`self_hosted`) | Schema in the system prompt only | Any OpenAI-compatible server; no `response_format`, because servers disagree on its dialect |
 
 `Provider.SELF_HOSTED` has the value `"llama.cpp"`, naming the backend actually
