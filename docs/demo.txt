@@ -1,0 +1,87 @@
+AIR Model Gateway: running the demo on a laptop
+================================================
+
+One gateway, started with `make up` (Docker, local mode), plus the AIR Web
+Console. Checked on 2026-10-26 against commit caa237e: console contract
+42/42 passed.
+
+
+WHAT RUNS
+---------
+
+  air-model-gateway   Docker container, http://localhost:8083
+                      local policy, provider keys from .env, Redis: none
+  air-web-console     Docker container, http://127.0.0.1:3000
+                      talks to the gateway on :8083
+  Ollama              native on the laptop, :11434 (local and auto classes)
+  llama.cpp           optional, native, :8181 (a local fallback model)
+
+The gateway needs no other AIR service. `cloud` needs internet and the
+Gemini or Anthropic key in .env (OpenAI has no key, so it shows false).
+Don't demo air-orchestrator-service: it still calls the removed
+/v1/inference.
+
+The integration stack (:9083) and the kind cluster are test harnesses,
+not part of the demo. Leave them down (`make integration-down`,
+`make kind-down`).
+
+
+START-UP AFTER A FRESH BOOT
+---------------------------
+
+1. Start Docker Desktop and wait until it says running.
+   The gateway and console containers restart on their own (restart
+   policy unless-stopped).
+
+2. Start Ollama. It does not start at boot:
+
+     ollama serve                 # leave this terminal open
+
+   To start it at every boot instead, once:  brew services start ollama
+
+3. Optional: start llama.cpp
+
+     cd ~/git/air-platform/air-model-gateway && make llamacpp-up
+
+4. Start the gateway. Safe even if Docker already restarted it; it
+   rebuilds from the current checkout.
+
+     cd ~/git/air-platform/air-model-gateway
+     make up
+     make ollama-warm                     # first demo call is fast
+     curl -s localhost:8083/v1/health     # revision = the commit you expect
+     curl -s localhost:8083/v1/ready      # ollama, gemini, anthropic: true
+
+5. Start the console
+
+     cd ~/git/air-platform/air-web-console && make up
+     open http://127.0.0.1:3000
+
+6. Smoke test, either:
+     - console: Model Gateway -> Contract scenarios -> Run all
+     - terminal: cd ~/git/air-platform/air-web-console && make gateway-check
+       expect "contract 42/42 passed"
+
+
+BEFORE THE DEMO
+---------------
+
+- One process on :8083 only. Don't also run `make run`.
+    lsof -nP -iTCP:8083 -sTCP:LISTEN     # a single Docker listener
+- Ollama started after the gateway? No restart needed: /v1/ready turns
+  it true on the next check.
+- No internet? Use the `local` class.
+- A startup warning `config.unknown_keys` is harmless: two retired keys
+  in the local .env (re-copy .env.example to silence it).
+- Logs:  cd ~/git/air-platform/air-model-gateway && make logs
+
+
+SHUTTING DOWN
+-------------
+
+  cd ~/git/air-platform/air-model-gateway && make down
+  cd ~/git/air-platform/air-web-console  && make down
+  Ctrl+C in the `ollama serve` terminal;  make llamacpp-down
+
+Skip the `make down` steps if you want both containers to come back by
+themselves at the next boot.
