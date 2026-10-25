@@ -3,14 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from air_model_gateway.api.deps import require_principal
+from air_model_gateway.api.deps import AuthenticatedRoute, require_principal
 from air_model_gateway.api.openapi import STREAM_RESPONSE, problems
 from air_model_gateway.api.v1 import model_calls
 from air_model_gateway.constants import Action
 from air_model_gateway.schemas.common import Principal
 from air_model_gateway.schemas.generate import GenerateInput, GenerateOutput
 
-router = APIRouter(tags=["generate"])
+router = APIRouter(tags=["generate"], route_class=AuthenticatedRoute)
 
 # Proxies must pass each event on as it is written: `no-cache` for any HTTP cache,
 # X-Accel-Buffering for nginx (and the many proxies that honour it).

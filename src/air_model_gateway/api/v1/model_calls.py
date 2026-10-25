@@ -12,6 +12,7 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from http import HTTPStatus
 
 import structlog
 from fastapi import Request
@@ -24,6 +25,7 @@ from air_model_gateway.api.errors import (
     BudgetExceeded,
     Forbidden,
     InvalidModelChoice,
+    ProviderRejected,
     ProviderUnavailable,
     RateLimited,
 )
@@ -92,7 +94,17 @@ def choose_generate(state: State, principal: Principal, body: GenerateInput) -> 
     if body.pin is not None:
         if not (state.settings.is_local or policy.may_pin(principal)):
             raise Forbidden(f"'{principal.service}' may not pin a model")
-        return GenerateChoice(_chain_or_422(lambda: catalog.pin_chain(body.pin)), None)
+        chain = _chain_or_422(lambda: catalog.pin_chain(body.pin))
+        provider, model = chain[0]
+        # A pin names any model, but the price table only knows some. An
+        # unpriced paid model would bill at the provider and count $0 against
+        # the caller's daily budget, so a pin grant would be unlimited spend.
+        if not state.prices.is_priced(provider, model):
+            raise InvalidModelChoice(
+                f"pin '{body.pin}': '{model}' has no price here, so its spend can't be "
+                "counted; pin a model listed in the gateway's price table"
+            )
+        return GenerateChoice(chain, None)
     if not policy.may_use_class(principal, body.model):
         raise Forbidden(f"'{principal.service}' may not use the '{body.model.value}' class")
     if body.provider is not None and not policy.may_prefer(principal, body.provider):
@@ -175,7 +187,7 @@ async def generate(
     try:
         result, provider = await state.router.chat(chat_req, choice.chain)
     except ProviderError as exc:
-        raise _map_error(exc) from exc
+        raise _map_error(exc, choice) from exc
 
     cost = state.prices.price(provider, result.model, result.usage)
     resp = ChatResponse(
@@ -240,7 +252,7 @@ async def open_generate_stream(
     try:
         opened, provider = await state.router.open_chat_stream(chat_req, choice.chain)
     except ProviderError as exc:
-        raise _map_error(exc) from exc
+        raise _map_error(exc, choice) from exc
     return _relay(state, principal, body, choice, key, opened, provider, request_id)
 
 
@@ -417,20 +429,28 @@ async def embed(state: State, principal: Principal, body: EmbedInput) -> EmbedOu
     except ProviderError as exc:
         raise _map_error(exc) from exc
     vectors = result.embeddings or []
-    # The published name promises a dimension; a model answering with another
-    # one (a misconfigured name) must never reach an index.
-    wrong = {len(v) for v in vectors} - {spec.dimensions}
-    if wrong:
-        raise ProviderUnavailable(
-            f"'{body.model}' returned {sorted(wrong)}-dimension vectors, not {spec.dimensions}"
-        )
-
+    # The provider billed the call whatever comes back, so its spend counts
+    # before the answer is checked.
     cost = state.prices.price(provider, result.model, result.usage)
     MODEL_TOKENS.labels(provider.value, result.model, Action.EMBED.value).inc(
         result.usage.total_tokens
     )
     MODEL_COST.labels(provider.value, result.model).inc(cost)
     await _record_spend(state, principal, cost)
+    # Vectors pair with texts by position, and the published name promises a
+    # dimension. A short answer would file every later vector under the wrong
+    # text, and another dimension means a misconfigured name: neither may
+    # reach an index.
+    if len(vectors) != len(body.input):
+        raise ProviderUnavailable(
+            f"'{body.model}' returned {len(vectors)} vectors for {len(body.input)} texts"
+        )
+    wrong = {len(v) for v in vectors} - {spec.dimensions}
+    if wrong:
+        raise ProviderUnavailable(
+            f"'{body.model}' returned {sorted(wrong)}-dimension vectors, not {spec.dimensions}"
+        )
+
     _audit(
         principal,
         Action.EMBED,
@@ -538,7 +558,20 @@ async def _record_spend(state: State, principal: Principal, cost: float) -> None
         await state.ledger.add(principal.service, cost)
 
 
-def _map_error(exc: ProviderError) -> ProviderUnavailable | RateLimited:
+def _map_error(exc: ProviderError, choice: GenerateChoice | None = None) -> AppError:
+    """A failed chain as the caller's answer: 429 when every rung was throttled,
+    422 when every rung refused the request as invalid or the caller pinned a
+    model its provider doesn't have, 502 otherwise (the one to retry)."""
     if exc.rate_limited:
         return RateLimited(exc.detail)
+    if exc.rejected:
+        return ProviderRejected(exc.detail)
+    # A 404 on a class's chain is the owner's misconfiguration (502); on a pin
+    # the caller named the model, so it is the caller's to fix.
+    if exc.status == HTTPStatus.NOT_FOUND and choice is not None and choice.model_class is None:
+        provider, model = choice.chain[0]
+        return InvalidModelChoice(
+            f"pin '{provider.value}:{model}': {provider.value} has no model '{model}' "
+            f"({exc.detail.removeprefix('all providers failed: ')})"
+        )
     return ProviderUnavailable(exc.detail)

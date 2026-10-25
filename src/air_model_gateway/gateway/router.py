@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from typing import Final
 
 from air_model_gateway.constants import Provider
-from air_model_gateway.gateway.base import ModelProvider, ProviderError, ProviderResult
+from air_model_gateway.gateway.base import (
+    FailureReason,
+    ModelProvider,
+    ProviderError,
+    ProviderResult,
+)
 from air_model_gateway.gateway.resilience import BreakerState, CircuitBreaker, backoff_seconds
 from air_model_gateway.observability.logging import get_logger
 from air_model_gateway.observability.metrics import (
@@ -14,6 +19,7 @@ from air_model_gateway.observability.metrics import (
     CIRCUIT_OPEN,
     CIRCUIT_SKIPS,
     PROVIDER_TIMEOUTS,
+    RUNG_FAILURES,
 )
 from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest
 
@@ -23,6 +29,7 @@ Chain = list[tuple[Provider, str]]
 #: Asked before each rung is called: may this deployment send one more call to
 #: this provider right now? (The policy's provider_quotas, see main.py.)
 Admit = Callable[[Provider], Awaitable[bool]]
+
 
 @dataclass
 class OpenedStream:
@@ -39,6 +46,12 @@ class OpenedStream:
 # and the failover chain below never gets walked. 60s is generous for a
 # completion and still an order of magnitude under any sane client budget.
 DEFAULT_TIMEOUT_SECONDS: Final[float] = 60.0
+
+# Consecutive auth failures (a refused key or account) after which /v1/ready
+# reports the provider down. Auth failures are deterministic, so one would
+# do; three keeps one stray 403 from flipping it. Any success clears it. A
+# fixed key needs a restart anyway: settings are read once, at boot.
+AUTH_FAILURES_UNHEALTHY: Final[int] = 3
 
 
 class ModelRouter:
@@ -67,6 +80,8 @@ class ModelRouter:
         # One breaker per (provider, model), not per provider: a model that is
         # missing or broken must not take its provider's healthy models with it.
         self._breakers: dict[tuple[Provider, str], CircuitBreaker] = {}
+        # Per provider, not per model: a key belongs to the provider account.
+        self._auth_failures: dict[Provider, int] = {}
 
     def breaker(self, provider: Provider, model: str) -> CircuitBreaker:
         key = (provider, model)
@@ -99,6 +114,7 @@ class ModelRouter:
     def record_stream_failure(self, provider: Provider, model: str, exc: ProviderError) -> None:
         """A stream that failed after its first item: counts toward the rung's
         breaker the way a failed call would (transient, non-throttle only)."""
+        _count(provider, model, exc.reason)
         if exc.retryable and not exc.rate_limited:
             self._record(self.breaker(provider, model), provider, model, healthy=False)
 
@@ -120,6 +136,8 @@ class ModelRouter:
                     chain[0][0],
                     f"all providers failed: {'; '.join(outcome.errors)}",
                     rate_limited=outcome.rate_limited,
+                    status=outcome.status,
+                    rejected=outcome.rejected,
                 )
             attempt += 1
             delay = backoff_seconds(self._retry_backoff, attempt)
@@ -137,6 +155,7 @@ class ModelRouter:
         for provider_kind, concrete in chain:
             provider = self._providers.get(provider_kind)
             if provider is None:
+                _count(provider_kind, concrete, "not_configured")
                 failed.add(f"{provider_kind.value}: not registered")
                 continue
             breaker = self.breaker(provider_kind, concrete)
@@ -161,6 +180,7 @@ class ModelRouter:
                 result = await asyncio.wait_for(call(provider, concrete), timeout=self._timeout)
             except TimeoutError:
                 PROVIDER_TIMEOUTS.labels(provider_kind.value).inc()
+                _count(provider_kind, concrete, "timeout")
                 log.warning(
                     "provider.timeout",
                     provider=provider_kind.value,
@@ -173,21 +193,32 @@ class ModelRouter:
                 )
                 continue
             except ProviderError as exc:
-                log.warning(
+                # A refused key is an operator's problem on every call until
+                # fixed, and failover hides it from callers: logged as an error.
+                (log.error if exc.auth else log.warning)(
                     "provider.failed",
                     provider=provider_kind.value,
                     model=concrete,
+                    reason=exc.reason,
                     detail=exc.detail,
                     rate_limited=exc.rate_limited,
                     retryable=exc.retryable,
                 )
+                _count(provider_kind, concrete, exc.reason)
+                self._note_auth(provider_kind, failed=exc.auth)
                 if exc.retryable and not exc.rate_limited:
                     self._record(breaker, provider_kind, concrete, healthy=False)
                 else:
                     # A 429 means the provider is up, and a 400 or a missing
                     # key says nothing about its health: neither trips it.
                     breaker.release()
-                failed.add(str(exc), rate_limited=exc.rate_limited, retryable=exc.retryable)
+                failed.add(
+                    str(exc),
+                    rate_limited=exc.rate_limited,
+                    retryable=exc.retryable,
+                    status=exc.status,
+                    rejected=exc.rejected,
+                )
                 continue
             except Exception as exc:
                 # An adapter bug or an SDK raising something unexpected. It is a
@@ -195,13 +226,18 @@ class ModelRouter:
                 # the request, and free a half-open breaker's probe slot. Not
                 # retryable and not counted against health: it's our defect,
                 # not the provider's, and the traceback is logged to fix it.
+                # The `adapter` count is what an alert watches: failover hides
+                # the defect from the caller (the next rung answers, often at
+                # a higher price).
                 log.exception(
                     "provider.unexpected_error", provider=provider_kind.value, model=concrete
                 )
+                _count(provider_kind, concrete, "adapter")
                 breaker.release()
                 failed.add(f"{provider_kind.value}:{concrete}: unexpected {type(exc).__name__}")
                 continue
             self._record(breaker, provider_kind, concrete, healthy=True)
+            self._note_auth(provider_kind, failed=False)
             return _Served(result, provider_kind)
         return failed
 
@@ -223,17 +259,37 @@ class ModelRouter:
             1 if breaker.state is BreakerState.OPEN else 0
         )
 
+    def _note_auth(self, provider: Provider, *, failed: bool) -> None:
+        if failed:
+            self._auth_failures[provider] = self._auth_failures.get(provider, 0) + 1
+        else:
+            self._auth_failures.pop(provider, None)
+
     async def health(self) -> dict[str, bool]:
+        """Per provider: its probe answered, and its key isn't being refused.
+
+        A cloud probe can only say a key is *set*; whether it works shows on
+        real calls, so a provider whose last AUTH_FAILURES_UNHEALTHY calls were
+        refused reports false here even though its probe passes."""
         # Probed concurrently: each probe has its own ~2s deadline, and /v1/ready
         # is polled on a tight budget — run in series, five slow probes would
         # blow past it even though no single one is slow enough to fail.
         kinds = list(self._providers)
         results = await asyncio.gather(*(self._providers[k].health() for k in kinds))
-        return {k.value: ok for k, ok in zip(kinds, results, strict=True)}
+        return {
+            k.value: ok and self._auth_failures.get(k, 0) < AUTH_FAILURES_UNHEALTHY
+            for k, ok in zip(kinds, results, strict=True)
+        }
 
     async def aclose(self) -> None:
         for prov in self._providers.values():
             await prov.aclose()
+
+
+def _count(provider: Provider, model: str, reason: FailureReason) -> None:
+    """One rung that was called (or would have been) and didn't answer. Rungs
+    skipped by an open breaker or a spent quota have their own counters."""
+    RUNG_FAILURES.labels(provider.value, model, reason).inc()
 
 
 class _Served[R]:
@@ -253,15 +309,40 @@ class _Failed:
         # timed out, errored or was skipped means waiting won't help on its own,
         # and a caller told "rate limited" would wait rather than escalate.
         self._all_rate_limited = True
+        # Likewise, whether every rung refused the request as invalid (a 400 for
+        # a prompt too long, a parameter the model won't take): then the chain
+        # failed because of the request, the caller's to fix (422), not because
+        # the providers are down (502, which callers retry).
+        self._all_rejected = True
+        self._statuses: set[int | None] = set()
 
-    def add(self, error: str, *, rate_limited: bool = False, retryable: bool = False) -> None:
+    def add(
+        self,
+        error: str,
+        *,
+        rate_limited: bool = False,
+        retryable: bool = False,
+        status: int | None = None,
+        rejected: bool = False,
+    ) -> None:
         self.errors.append(error)
         self.retryable = self.retryable or retryable
         self._all_rate_limited = self._all_rate_limited and rate_limited
+        self._all_rejected = self._all_rejected and rejected
+        self._statuses.add(status)
 
     @property
     def rate_limited(self) -> bool:
         return self._all_rate_limited and bool(self.errors)
+
+    @property
+    def rejected(self) -> bool:
+        return self._all_rejected and bool(self.errors)
+
+    @property
+    def status(self) -> int | None:
+        """The providers' HTTP status, when every rung answered with the same one."""
+        return next(iter(self._statuses)) if len(self._statuses) == 1 else None
 
 
 async def _open_stream(provider: ModelProvider, model: str, req: ChatRequest) -> OpenedStream:

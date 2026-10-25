@@ -16,9 +16,9 @@ class AirModelGatewayError(Exception):
     """A non-2xx answer from air-model-gateway, carrying its RFC 9457 problem body.
 
     ``code`` is the stable machine-readable part (``unauthorized``,
-    ``policy_denied``, ``rate_limited``, ``budget_exceeded``,
-    ``provider_unavailable``, ``validation_error``, ...) — branch on it, not on ``detail``, which is
-    human-readable and may change. ``request_id`` is what to quote when asking
+    ``policy_denied``, ``rate_limited``, ``budget_exceeded``, ``provider_unavailable``,
+    ``provider_rejected``, ``validation_error``, ...) — branch on it, not on ``detail``,
+    which is human-readable and may change. ``request_id`` is what to quote when asking
     the gateway's owners to look at a failed call.
     """
 
@@ -146,7 +146,11 @@ class AirModelGatewayClient:
         """POST /v1/generate with `stream: true`. Yields `(event, data)` pairs as
         they arrive: one `("start", ...)`, then `("delta", {"content": ...})` for
         each slice of text, then `("done", summary)`. An error before the stream
-        starts, or an `error` event after, raises AirModelGatewayError."""
+        starts, or an `error` event after, raises AirModelGatewayError.
+
+        If `done` has `refusal: true`, discard the deltas: they are what the
+        model wrote before its safety layer stopped it, which the non-streamed
+        call would have replaced with empty `content`."""
         payload = _generate_payload(
             messages,
             model=model,

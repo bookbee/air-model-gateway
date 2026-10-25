@@ -1,9 +1,23 @@
 from __future__ import annotations
 
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 REQUESTS = Counter(
     "air_model_gateway_requests_total", "HTTP requests", ["route", "method", "status"]
+)
+# What latency SLOs are set on. Measured to the response's start, so for a
+# stream it is the time to the first token. Buckets span a cache hit (ms) to a
+# long cloud completion near the 60s per-attempt deadline.
+REQUEST_SECONDS = Histogram(
+    "air_model_gateway_request_duration_seconds",
+    "HTTP request duration, to the start of the response",
+    ["route", "method"],
+    buckets=(0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 40, 60, 120),
+)
+# The build each replica runs: constant 1, labelled. During a rollout, or when
+# a test run must prove which code answered it, this names the revision.
+BUILD_INFO = Gauge(
+    "air_model_gateway_build_info", "The running build (value is always 1)", ["version", "revision"]
 )
 MODEL_TOKENS = Counter(
     "air_model_gateway_model_tokens_total", "Model tokens", ["provider", "model", "kind"]
@@ -22,6 +36,17 @@ PROVIDER_TIMEOUTS = Counter(
     "air_model_gateway_provider_timeouts_total",
     "Provider calls abandoned at the gateway timeout",
     ["provider"],
+)
+# Every rung that was tried and didn't answer, by why. Failover hides these
+# from callers (the next rung answers, often at a higher price), so this is how
+# they get noticed: `auth` (the gateway's key or account was refused) and
+# `adapter` (an unexpected exception inside an adapter: a gateway defect) each
+# need a person; a rising rate of the rest is failover eating the budget.
+RUNG_FAILURES = Counter(
+    "air_model_gateway_rung_failures_total",
+    "Failover-chain rungs that were called and failed, by reason: auth, not_configured, "
+    "rate_limited, rejected, not_found, timeout, unavailable, adapter, other",
+    ["provider", "model", "reason"],
 )
 CHAIN_RETRIES = Counter(
     "air_model_gateway_chain_retries_total",

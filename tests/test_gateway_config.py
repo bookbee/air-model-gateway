@@ -12,9 +12,11 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from air_model_gateway.constants import LOCAL_PROVIDERS, Action, ModelClass, Provider
+from air_model_gateway.config import PolicySettings, Settings
+from air_model_gateway.constants import LOCAL_PROVIDERS, Action, Environment, ModelClass, Provider
 from air_model_gateway.gateway.cost import DEFAULT_PRICING, PriceBook
 from air_model_gateway.gateway.models import DEFAULT_ROUTING, ModelCatalog
+from air_model_gateway.main import _unbudgeted_services
 from air_model_gateway.policy.engine import PolicyEngine
 from air_model_gateway.schemas.common import Principal
 from air_model_gateway.schemas.gateway import RoutingDoc
@@ -35,19 +37,6 @@ def _catalog() -> ModelCatalog:
     return ModelCatalog.load(ROUTING)
 
 
-def _all_chains(catalog: ModelCatalog) -> dict[str, list[tuple[Provider, str]]]:
-    """Every chain a call can run: each class, globally and per service, and each
-    embedding model."""
-    doc = catalog.doc
-    chains = {f"generate.{c.value}": catalog.class_chain("", c) for c in ModelClass}
-    for service, routes in doc.overrides.items():
-        for c in routes.generate:
-            chains[f"{service}.{c.value}"] = catalog.class_chain(service, c)
-    for name, spec in doc.embed.items():
-        chains[f"embed.{name}"] = [(spec.provider, spec.model)]
-    return chains
-
-
 def test_shipped_routing_config_loads() -> None:
     catalog = _catalog()
     assert set(catalog.doc.generate) == set(ModelClass)
@@ -62,7 +51,7 @@ def test_shipped_routing_and_pricing_agree() -> None:
     """
     prices = PriceBook.load(PRICING)
     usage = Usage(prompt_tokens=1_000_000, completion_tokens=0, total_tokens=1_000_000)
-    for where, chain in _all_chains(_catalog()).items():
+    for where, chain in _catalog().all_chains().items():
         for provider, model in chain:
             if not prices.is_free(provider, model):
                 assert prices.price(provider, model, usage) > 0, (
@@ -146,8 +135,17 @@ def test_self_hosted_is_free_regardless_of_model_name() -> None:
 def test_cache_tokens_bill_at_the_published_ratios() -> None:
     book = PriceBook(DEFAULT_PRICING)
     usage = Usage(cache_read_tokens=1_000_000, cache_write_tokens=1_000_000)
-    # input rate 3.00/Mtok -> read at 10% (0.30) + write at 2x (6.00)
-    assert book.price(Provider.ANTHROPIC, "claude-sonnet-5", usage) == pytest.approx(6.30)
+    # input rate 3.00/Mtok -> read at 10% (0.30) + a 5-minute write at 1.25x (3.75)
+    assert book.price(Provider.ANTHROPIC, "claude-sonnet-5", usage) == pytest.approx(4.05)
+
+
+def test_shipped_pricing_matches_the_built_in_cache_ratios() -> None:
+    """Both price Anthropic's 5-minute cache write, the one the adapter asks for."""
+    shipped = PriceBook.load(PRICING)._doc
+    assert (shipped.cache_read_ratio, shipped.cache_write_ratio) == (
+        DEFAULT_PRICING.cache_read_ratio,
+        DEFAULT_PRICING.cache_write_ratio,
+    )
 
 
 #: What each consumer asks of the gateway, by operation: the cross-repo
@@ -186,6 +184,17 @@ def test_only_the_operator_console_may_pin(policy_file: str) -> None:
     policy = PolicyEngine.load(policy_file, permit_default_allow=False)
     pinning = {s for s in CONSUMERS if policy.may_pin(Principal(service=s))}
     assert pinning == {"air-web-console"}
+
+
+@pytest.mark.parametrize("policy_file", POLICIES[1:])  # staging and prod
+def test_shipped_shared_policies_budget_every_service_that_can_spend(policy_file: str) -> None:
+    """Outside local the gateway refuses to start otherwise (main.py)."""
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        environment=Environment.STAGING,
+        policy=PolicySettings(config_path=policy_file),
+    )
+    assert _unbudgeted_services(settings) == []
 
 
 def test_the_classifier_keeps_its_tier_semantics() -> None:

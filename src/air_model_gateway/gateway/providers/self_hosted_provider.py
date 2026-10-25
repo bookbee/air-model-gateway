@@ -8,9 +8,9 @@ from air_model_gateway.gateway.base import ProviderError, ProviderResult
 from air_model_gateway.gateway.providers._common import (
     NeverRaised,
     int_attr,
-    is_transient,
     openai_stream,
     openai_usage,
+    provider_error,
     with_schema_instruction,
 )
 from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Usage
@@ -51,7 +51,9 @@ class SelfHostedProvider:
             try:
                 import openai
             except ImportError as exc:  # pragma: no cover
-                raise ProviderError(self.name, "openai SDK not installed") from exc
+                raise ProviderError(
+                    self.name, "openai SDK not installed", configured=False
+                ) from exc
             self._client = openai.AsyncOpenAI(
                 api_key=self._api_key, base_url=self._base_url, max_retries=0
             )
@@ -116,9 +118,12 @@ class SelfHostedProvider:
             yield item
 
     def _error(self, exc: Exception) -> ProviderError:
-        if isinstance(exc, self._rate_limit_error):
-            return ProviderError(self.name, str(exc), rate_limited=True)
-        return ProviderError(self.name, f"{self._base_url}: {exc}", retryable=is_transient(exc))
+        return provider_error(
+            self.name,
+            exc,
+            detail=f"{self._base_url}: {exc}",
+            throttled=isinstance(exc, self._rate_limit_error),
+        )
 
     def _messages(self, req: ChatRequest) -> list[dict[str, str]]:
         return with_schema_instruction([m.model_dump() for m in req.messages], req.json_schema)
@@ -127,12 +132,8 @@ class SelfHostedProvider:
         self._ensure()
         try:
             resp = await self._client.embeddings.create(model=model, input=req.input)
-        except self._rate_limit_error as exc:
-            raise ProviderError(self.name, str(exc), rate_limited=True) from exc
         except Exception as exc:
-            raise ProviderError(
-                self.name, f"{self._base_url}: {exc}", retryable=is_transient(exc)
-            ) from exc
+            raise self._error(exc) from exc
         tokens = int_attr(resp.usage, "prompt_tokens")
         return ProviderResult(
             model=model,

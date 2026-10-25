@@ -15,9 +15,13 @@ default_rate_per_minute: 60
 # service (a rung over quota is skipped and the chain fails over). Set from the
 # provider account's own limits, below them; omit a provider for no cap.
 # Provider names: ollama, anthropic, openai, gemini, llama.cpp.
-provider_quotas: {}
-#   gemini: 600
-#   anthropic: 300
+# STARTING VALUES, chosen without knowing the accounts' tiers: the owner sets
+# them from each account's published limit (with headroom) and observed load
+# (`air_model_gateway_provider_quota_rejected_total`).
+provider_quotas:
+  anthropic: 600
+  openai: 600
+  gemini: 600
 
 # Per service, optional (unset = every choice routing.yaml offers):
 #   model_classes: [local, auto]        /v1/generate classes it may use
@@ -28,22 +32,32 @@ provider_quotas: {}
 #   daily_budget_usd: 25.0              USD per UTC day; past it, paid calls get
 #                                       429 budget_exceeded until midnight UTC
 #                                       (cache hits still served).
+#
+# Every service that can reach a paid model (a class with a cloud rung, a cloud
+# embedding model, or pin) must have a daily_budget_usd: the gateway refuses
+# to start without one outside local, because on a gateway shared by many
+# projects an uncapped service is unlimited spend on the shared accounts. The
+# budgets below are STARTING VALUES for the owner to set from observed spend
+# (`air_model_gateway_service_cost_usd_total`).
 
 services:
   air-classifier-service:
     resources:
       inference: [generate, embed]
     rate_per_minute: 300
+    daily_budget_usd: 25.0
 
   air-orchestrator-service:
     resources:
       inference: [generate, embed]
     rate_per_minute: 600
+    daily_budget_usd: 50.0
 
   air-tools:
     resources:
       inference: [generate]
     rate_per_minute: 300
+    daily_budget_usd: 25.0
 
   air-rag:
     resources:
@@ -60,3 +74,4 @@ services:
       admin: [admin_read]
     rate_per_minute: 60
     pin: true  # the operator tests exact models
+    daily_budget_usd: 5.0

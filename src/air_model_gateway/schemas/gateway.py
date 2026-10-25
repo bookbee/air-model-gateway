@@ -93,6 +93,6 @@ class ModelPrice(BaseModel):
 
 class PricingDoc(BaseModel):
     cache_read_ratio: float = 0.1
-    cache_write_ratio: float = 2.0
+    cache_write_ratio: float = 1.25
     local_prefixes: list[str] = Field(default_factory=list)
     models: dict[str, ModelPrice] = Field(default_factory=dict)

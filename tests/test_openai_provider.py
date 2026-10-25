@@ -77,8 +77,19 @@ async def test_plain_chat_sends_no_response_format() -> None:
     [call] = completions.calls
     assert "response_format" not in call
     assert call["temperature"] == 0.3
-    assert call["max_tokens"] == 40
+    # The current name: gpt-5 and the o-series reject `max_tokens`.
+    assert call["max_completion_tokens"] == 40
+    assert "max_tokens" not in call
     assert call["messages"] == [{"role": "user", "content": "ping"}]
+
+
+async def test_unset_sampling_options_are_left_out_not_sent_as_null() -> None:
+    """A model with a fixed temperature (gpt-5, o-series) rejects any value."""
+    provider, completions, _ = _provider()
+    await provider.chat(_req(), "gpt-5")
+
+    [call] = completions.calls
+    assert not {"temperature", "max_tokens", "max_completion_tokens"} & set(call)
 
 
 async def test_structured_output_is_json_mode_plus_instruction() -> None:

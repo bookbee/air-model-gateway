@@ -25,7 +25,11 @@ x-host-access: &host-access
 services:
   air-model-gateway:
     <<: [*restart, *host-access]
-    build: .
+    build:
+      context: .
+      # The checkout's revision, which the Makefile exports; /v1/health reports it.
+      args:
+        REVISION: ${AIR_MODEL_GATEWAY_REVISION:-unknown}
     # Pinned explicitly, as every other AIR service does. Without it compose
     # derives `<project>-<service>` and the name doubles to `air-model-gateway-air-model-gateway`.
     # The `local` tag says "built from this checkout", so it cannot be confused

@@ -60,8 +60,9 @@ Two routes, both `POST` with `X-API-Key: <token>`:
 `auto` may send the prompt to a cloud provider: if your data must not leave the
 network, send `local`. Each class is a chain of models with failover; which models,
 and in what order, is the owner's configuration, possibly tuned for your service.
-`GET /v1/capabilities` shows the chain behind each class **for your service**, and which
-classes you are granted.
+`GET /v1/capabilities` shows the chain behind each class **for your service**, which
+classes you are granted (`allowed`), and which this deployment can serve at all
+(`available`: some provider in the chain has a key). Pick from those with both true.
 
 - **`provider`** (optional) is a preference within the class: `ollama` or `llama.cpp`
   for `local`; `gemini`, `anthropic` or `openai` for `cloud`; any of them for `auto`.
@@ -69,7 +70,9 @@ classes you are granted.
   class doesn't offer is a 422.
 - **`pin`** (operator tools only, with a grant) names one exact model,
   `provider:model` (e.g. `anthropic:claude-haiku-4-5`), with no fallback. It replaces
-  `model` and `provider`; applications never need it.
+  `model` and `provider`; applications never need it. The model must be in the
+  gateway's price table (or local), so its spend counts toward your budget, and one its
+  provider has; otherwise the pin is 422 `invalid_model_choice`.
 - The response's `model_class`, `provider` and `model` say what actually answered.
 
 **`/v1/embed`: `model` is a published embedding model**, named
@@ -88,7 +91,19 @@ classes you are granted.
 - **One model, no fallback.** If it is down, the call fails rather than returning
   vectors from another model that would corrupt your index.
 - The response's `dimensions` lets you check, at startup, that it matches your index.
-  `GET /v1/capabilities` lists the published names and which you are granted.
+  `GET /v1/capabilities` lists the published names, which you are granted (`allowed`)
+  and which this deployment can serve (`available`).
+
+**Size limits**, checked before any model is called (422 `validation_error`):
+
+| Route | Limit |
+|---|---|
+| `/v1/generate` | At most 500 `messages`, and 800,000 characters of content in all (about 200k tokens) |
+| `/v1/embed` | At most 2,048 texts in `input`, each at most 32,000 characters (about 8k tokens) |
+
+Split a larger embedding batch into several calls. A prompt within the limit can still
+be too long for a particular model; then the provider's refusal comes back as 422
+`provider_rejected`.
 
 ```bash
 # Generate
@@ -131,13 +146,16 @@ Every error is `application/problem+json` with a stable `code` and the `request_
 
 | Status | `code` | Meaning | Retry? |
 |---|---|---|---|
-| 401 | `unauthorized` | Token missing, wrong, or from another environment | No: fix config |
+| 401 | `unauthorized` | Token missing, wrong, or from another environment (checked before the body) | No: fix config |
 | 403 | `policy_denied` | No grant for this operation, or a class, embedding model, provider or `pin` outside your grant | No: ask for a grant |
-| 422 | `invalid_model_choice` | An unpublished embedding name, a provider the class doesn't offer, a malformed `pin` | No: fix the request (`/v1/capabilities` lists your choices) |
-| 422 | `validation_error` | Bad body (e.g. `/v1/generate` without `messages`) | No: fix the request |
+| 404 | `not_found` | No such path (e.g. a route that was removed) | No: fix the URL |
+| 405 | `method_not_allowed` | Wrong method for the path; `Allow` lists the right one | No: fix the call |
+| 422 | `invalid_model_choice` | An unpublished embedding name, a provider the class doesn't offer, a malformed `pin`, or a pin to an unpriced model or one its provider doesn't have | No: fix the request (`/v1/capabilities` lists your choices) |
+| 422 | `validation_error` | Bad body (e.g. `/v1/generate` without `messages`, invalid JSON, or over a size limit) | No: fix the request |
+| 422 | `provider_rejected` | Every model in the chain refused the request as invalid (e.g. too long for it); `detail` has the providers' reasons | No: change the request |
 | 429 | `rate_limited` | Your rate limit, or every rung of the chain throttled (by a provider or the gateway's provider quota) | Yes, with backoff |
 | 429 | `budget_exceeded` | Your service's daily budget is spent | No: stop until `Retry-After` (next UTC day); cache hits still work |
-| 502 | `provider_unavailable` | Every model in the chain failed; `detail` lists each | Yes, with backoff |
+| 502 | `provider_unavailable` | Every model in the chain failed for a reason other than your request (outage, timeout); `detail` lists each | Yes, with backoff |
 | 503 | (no body contract) | A proxy or a gateway with no reachable provider | Yes, with backoff |
 | 500 | `internal_error` | A gateway bug: report it with the `request_id` | Once at most |
 
@@ -226,6 +244,9 @@ data: {"id":"5b40…","model":"claude-haiku-4-5","provider":"anthropic","usage":
   `json_schema`, the slices are the JSON text: parse it once `done` arrives.
 - **`done`** has everything a normal response has except `content` (`GenerateSummary`
   in [openapi.json](openapi.json)): usage, cost, `finish_reason`, `refusal`, `cached`.
+- **If `done` has `refusal: true`, discard the deltas.** The safety layer's verdict
+  arrives with the final item, after the model's text has been streamed; the same call
+  without `stream` returns empty `content`. Don't show the text as an answer.
 - **`error`** replaces `done` if the stream fails after it started (the model stopped
   answering, or went silent for longer than the gateway's idle limit, 30 s by default).
   Its data is the usual problem body (`code`, `detail`, `request_id`). Text already
@@ -243,6 +264,13 @@ data: {"id":"5b40…","model":"claude-haiku-4-5","provider":"anthropic","usage":
 
 The reference client's `generate_stream()` yields `(event, data)` pairs and raises
 `AirModelGatewayError` on an `error` event.
+
+### Budgets
+
+A service with a `daily_budget_usd` gets 429 `budget_exceeded` once its spend for the
+UTC day reaches it. The check runs before each paid call and the cost is added after,
+so calls already in flight complete: spend can pass the budget by up to your concurrent
+paid calls times the cost of one. Set the budget with that margin in mind.
 
 ### Unsupported options
 

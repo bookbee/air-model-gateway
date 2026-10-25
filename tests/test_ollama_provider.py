@@ -162,3 +162,36 @@ async def test_chat_stream_errors_are_provider_errors() -> None:
 
 def _chat_req() -> ChatRequest:
     return ChatRequest(messages=[Message(role="user", content="hi")])
+
+
+def _failing(status: int, body: str) -> OllamaProvider:
+    provider = OllamaProvider("http://ollama")
+    provider._client = httpx.AsyncClient(
+        base_url="http://ollama",
+        transport=httpx.MockTransport(lambda request: httpx.Response(status, text=body)),
+    )
+    return provider
+
+
+@pytest.mark.parametrize("stream", [False, True], ids=["plain", "stream"])
+async def test_an_error_keeps_ollamas_own_reason_and_status(stream: bool) -> None:
+    """httpx's message names only the status, the URL and an MDN link; the
+    reason QA and on-call need is in Ollama's body."""
+    provider = _failing(404, json.dumps({"error": "model 'no-such-model' not found"}))
+    with pytest.raises(ProviderError) as info:
+        if stream:
+            async for _ in provider.chat_stream(_chat_req(), "no-such-model"):
+                pass
+        else:
+            await provider.chat(_chat_req(), "no-such-model")
+    assert info.value.detail == "404 model 'no-such-model' not found"
+    assert (info.value.status, info.value.retryable, info.value.rejected) == (404, False, False)
+
+
+async def test_an_error_body_that_is_not_json_is_trimmed_into_the_detail() -> None:
+    provider = _failing(400, "<html>" + "x" * 2000)
+    with pytest.raises(ProviderError) as info:
+        await provider.embeddings(EmbeddingsRequest(input=["x"]), "m")
+    assert info.value.detail.startswith("400 <html>")
+    assert len(info.value.detail) < 600
+    assert info.value.rejected is True  # a 400: the request itself is invalid

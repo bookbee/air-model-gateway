@@ -46,7 +46,8 @@
 <rect x="750" y="220" width="290" height="78" rx="7" fill="#FDECEC" stroke="#C62828" stroke-width="1.4"/>
 <text x="760" y="240" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Answer the caller</text>
 <text x="760" y="255.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">429 if every rung was throttled</text>
-<text x="760" y="267.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">otherwise 502 naming each rung</text>
+<text x="760" y="267.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">422 if every rung rejected it</text>
+<text x="760" y="278.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">otherwise 502 naming each rung</text>
 <polyline points="350,250 400,250" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
 <text x="375" y="244" font-size="10.5" font-weight="normal" fill="#1F2430" text-anchor="middle">yes</text>
 <polyline points="350,280 370,280 370,320 895,320 895,298" fill="none" stroke="#C62828" stroke-width="1.5" marker-end="url(#arrow-error)"/>

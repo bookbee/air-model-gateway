@@ -489,7 +489,7 @@ def request_flow() -> str:
     row2 = [
         ("6  Cache", ("per service · hit = answer",), "200 cached: true"),
         ("7  Daily budget", ("paid calls only",), "429 budget_exceeded"),
-        ("8  Router", ("walk chain, failover",), "502 · 429 if all throttled"),
+        ("8  Router", ("walk chain, failover",), "429 · 422 rejected · 502"),
         ("9  Bookkeeping", ("price · spend · cache · audit",), ""),
         ("200  Answer", ("JSON, or SSE stream",), ""),
     ]
@@ -801,7 +801,11 @@ def resilience() -> str:
             290,
             78,
             "Answer the caller",
-            ("429 if every rung was throttled", "otherwise 502 naming each rung"),
+            (
+                "429 if every rung was throttled",
+                "422 if every rung rejected it",
+                "otherwise 502 naming each rung",
+            ),
             kind="error",
             size=13,
         )

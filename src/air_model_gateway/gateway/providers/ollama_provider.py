@@ -8,7 +8,7 @@ import httpx
 
 from air_model_gateway.constants import Provider
 from air_model_gateway.gateway.base import ProviderError, ProviderResult
-from air_model_gateway.gateway.providers._common import is_transient
+from air_model_gateway.gateway.providers._common import http_error_detail, provider_error
 from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Usage
 
 
@@ -49,12 +49,9 @@ class OllamaProvider:
                         yield _chat_result(data, model, content="")
                         return
         except httpx.HTTPStatusError as exc:
-            rate_limited = exc.response.status_code == httpx.codes.TOO_MANY_REQUESTS
-            raise ProviderError(
-                self.name, str(exc), rate_limited=rate_limited, retryable=is_transient(exc)
-            ) from exc
+            raise provider_error(self.name, exc, detail=http_error_detail(exc)) from exc
         except httpx.HTTPError as exc:
-            raise ProviderError(self.name, str(exc), retryable=is_transient(exc)) from exc
+            raise provider_error(self.name, exc) from exc
         except ValueError as exc:
             raise ProviderError(self.name, "/api/chat: stream line is not JSON") from exc
         raise ProviderError(self.name, "/api/chat: stream ended before done", retryable=True)
@@ -109,12 +106,10 @@ class OllamaProvider:
             resp.raise_for_status()
             data = resp.json()
         except httpx.HTTPStatusError as exc:
-            rate_limited = exc.response.status_code == httpx.codes.TOO_MANY_REQUESTS
-            raise ProviderError(
-                self.name, str(exc), rate_limited=rate_limited, retryable=is_transient(exc)
-            ) from exc
+            # The reason Ollama gives (`model 'x' not found`) is in the body.
+            raise provider_error(self.name, exc, detail=http_error_detail(exc)) from exc
         except httpx.HTTPError as exc:
-            raise ProviderError(self.name, str(exc), retryable=is_transient(exc)) from exc
+            raise provider_error(self.name, exc) from exc
         except ValueError as exc:
             raise ProviderError(self.name, f"{path}: response is not JSON") from exc
         if not isinstance(data, dict):

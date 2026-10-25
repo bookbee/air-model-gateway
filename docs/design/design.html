@@ -190,11 +190,13 @@
   <figure><img src="diagrams/03-request-flow.svg" alt="Request flow"></figure>
   <div class="cols three" style="margin-top:3mm">
     <div><h3>Before the model (steps 1–7)</h3><p>Everything cheap and local runs first: identity, grant, rate, choice, cache, budget.
-    A request refused here costs no provider call. Validation errors (unknown field, bad role, out-of-range
-    <code>temperature</code>) are 422 and never reach a provider.</p></div>
+    A request refused here costs no provider call. The key is checked before the body is read. Validation
+    errors (unknown field, bad role, out-of-range <code>temperature</code>, over a size limit) are 422 and
+    never reach a provider.</p></div>
     <div><h3>The model (step 8)</h3><p>The router walks the chain the catalog chose: per-attempt deadline, open breakers and spent
     provider quotas skipped, one jittered retry if a failure was transient. It returns 429 only if every
-    rung was throttled; otherwise 502 naming each rung's error.</p></div>
+    rung was throttled, 422 <code>provider_rejected</code> if every rung refused the request as invalid;
+    otherwise 502 naming each rung's error.</p></div>
     <div><h3>After the model (step 9)</h3><p>Price from <code>pricing.yaml</code> (local models are free), add to the service's daily
     spend, store in the cache, count tokens and cost, write one <code>model.call</code> line: service,
     operation, choice, provider, model, tokens, cost, cached, finish_reason.</p></div>
@@ -286,7 +288,7 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><th>Route</th><th>Purpose</th></tr>
         <tr><td><code>POST /v1/generate</code></td><td>Text from messages; JSON or SSE</td></tr>
         <tr><td><code>POST /v1/embed</code></td><td>One vector per input text</td></tr>
-        <tr><td><code>GET /v1/capabilities</code></td><td>Your classes, chains, grants</td></tr>
+        <tr><td><code>GET /v1/capabilities</code></td><td>Your classes, chains, grants (<code>allowed</code>), what this deployment can serve (<code>available</code>)</td></tr>
         <tr><td><code>GET /v1/health</code></td><td>Liveness (no auth)</td></tr>
         <tr><td><code>GET /v1/ready</code></td><td>200 if any provider answers, else 503</td></tr>
         <tr><td><code>GET /v1/admin/policy</code></td><td>Effective policy (admin_read)</td></tr>
@@ -340,8 +342,10 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><th>Status · code</th><th>Meaning · action</th></tr>
         <tr><td>401 <code>unauthorized</code></td><td>Missing or unknown token</td></tr>
         <tr><td>403 <code>policy_denied</code></td><td>Not granted (operation, class, provider, pin, embedding model)</td></tr>
-        <tr><td>422 <code>validation_error</code></td><td>Body invalid; detail names each field</td></tr>
-        <tr><td>422 <code>invalid_model_choice</code></td><td>Choice means nothing here; see capabilities</td></tr>
+        <tr><td>422 <code>validation_error</code></td><td>Body invalid or over a size limit; detail names each field</td></tr>
+        <tr><td>404 · 405 <code>not_found</code> · <code>method_not_allowed</code></td><td>Wrong path or method</td></tr>
+        <tr><td>422 <code>invalid_model_choice</code></td><td>Choice means nothing here (or an unpriced pin); see capabilities</td></tr>
+        <tr><td>422 <code>provider_rejected</code></td><td>Every provider refused the request as invalid; change it</td></tr>
         <tr><td>429 <code>rate_limited</code></td><td>Retry with backoff</td></tr>
         <tr><td>429 <code>budget_exceeded</code></td><td>Stop until <code>Retry-After</code> (next UTC day)</td></tr>
         <tr><td>502 <code>provider_unavailable</code></td><td>Every rung failed; retry with backoff</td></tr>
@@ -419,6 +423,7 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><td><code>service_cost_usd_total</code></td><td>by calling service</td></tr>
         <tr><td><code>model_unpriced_total</code></td><td>model missing from pricing</td></tr>
         <tr><td><code>provider_timeouts_total</code></td><td>attempts past the deadline</td></tr>
+        <tr><td><code>adapter_errors_total</code></td><td>adapter bugs hidden by failover</td></tr>
         <tr><td><code>chain_retries_total</code></td><td>extra passes over a chain</td></tr>
         <tr><td><code>circuit_skips_total</code></td><td>rungs skipped, breaker open</td></tr>
         <tr><td><code>circuit_open</code></td><td>1 while a breaker is open</td></tr>
@@ -449,6 +454,7 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><td><code>circuit_open == 1</code> for 5 min</td><td>A model is down</td></tr>
         <tr><td>rising <code>redis_errors_total</code></td><td>Running degraded</td></tr>
         <tr><td><code>model_unpriced_total</code> &gt; 0</td><td>A model has no price</td></tr>
+        <tr><td><code>adapter_errors_total</code> &gt; 0</td><td>An adapter bug (often an SDK change)</td></tr>
         <tr><td>5xx share of <code>requests_total</code></td><td>Chains exhausted</td></tr>
       </table>
     </div>
@@ -458,7 +464,7 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><th>Symptom</th><th>Look at</th></tr>
         <tr><td>502 naming every rung</td><td>Model servers up? Keys set? <code>/v1/ready</code>, breaker metrics</td></tr>
         <tr><td>403 on a call</td><td>The service's entry in <code>policy.&lt;env&gt;.yaml</code>; <code>/v1/capabilities</code></td></tr>
-        <tr><td>422 <code>invalid_model_choice</code></td><td>Name not published, or provider not in the class</td></tr>
+        <tr><td>422 <code>invalid_model_choice</code></td><td>Name not published, provider not in the class, pin unpriced or unknown</td></tr>
         <tr><td>429 <code>budget_exceeded</code></td><td><code>daily_budget_usd</code>; resets at 00:00 UTC</td></tr>
         <tr><td>Slow answers</td><td><code>provider_timeouts_total</code>; a slow first rung; Ollama loaded at the right context</td></tr>
         <tr><td>Answers changed after a deploy</td><td>The class's chain in <code>routing.yaml</code>; tune one service with <code>overrides</code></td></tr>

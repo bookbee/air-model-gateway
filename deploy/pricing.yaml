@@ -10,9 +10,12 @@
 # stops a consumer's cost ceiling early; an under-estimate overspends silently.
 
 # Cache token rates follow each provider's published ratio against the input rate:
-# a cache read bills ~10% of input, a 1-hour cache write ~2x.
+# a cache read bills ~10% of input. Only Anthropic bills cache writes, at 1.25x
+# for its 5-minute cache and 2x for the 1-hour one; the adapter asks for the
+# 5-minute cache (`ephemeral` with no ttl), so 1.25. If it ever asks for `1h`,
+# this must become 2.0, or those writes are under-counted.
 cache_read_ratio: 0.1
-cache_write_ratio: 2.0
+cache_write_ratio: 1.25
 
 # Locally served models cost electricity, not tokens. Pricing them against a
 # caller's budget would suppress the cheap rung the escalation ladder is built

@@ -7,19 +7,13 @@ from typing import Any
 from air_model_gateway.constants import Provider
 from air_model_gateway.gateway.base import ProviderError, ProviderResult
 from air_model_gateway.gateway.providers._common import (
-    NeverRaised,
-    compact_json,
     int_attr,
-    is_transient,
-    schema_instruction,
+    provider_error,
 )
 from air_model_gateway.observability.logging import get_logger
 from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Usage
 
 log = get_logger("gateway.gemini")
-
-# HTTP status meaning "back off" rather than "this will never work".
-_TOO_MANY_REQUESTS = 429
 
 # finish_reason values that are the safety layer declining, not a fault. Strings
 # rather than enum members so a new SDK member cannot break the import.
@@ -37,12 +31,14 @@ class GeminiProvider:
       ``system_instruction`` and only user/assistant turns go in ``contents``,
       where the assistant role is spelled ``model``.
     * **Structured output is enforced, not suggested.** The caller's JSON Schema
-      goes to ``response_schema`` and the API constrains decoding to it, rather
-      than the schema-in-the-prompt approach the OpenAI adapter uses. Gemini's
-      dialect rejects ``$defs``/``$ref``, so a schema carrying them is sent
-      unconstrained with the schema appended to the instruction instead — the
-      caller validates and repairs client-side either way, so a schema the API
-      will not accept degrades to the same contract rather than failing the call.
+      goes to ``response_json_schema`` and the API constrains decoding to it,
+      rather than the schema-in-the-prompt approach the OpenAI adapter uses.
+      Not ``response_schema``: that field takes Gemini's own OpenAPI-subset
+      ``Schema``, where ``type`` is a single enum value, so the SDK crashes
+      building the request for a union type such as ``["string", "null"]`` (the
+      usual way to write an optional field). ``response_json_schema`` takes
+      standard JSON Schema, union types, ``anyOf`` and ``$defs``/``$ref`` included
+      (checked live against gemini-2.5-flash), so the schema is sent as given.
     """
 
     name = Provider.GEMINI
@@ -51,20 +47,20 @@ class GeminiProvider:
         self._api_key = api_key
         self._client: Any = None
         self._types: Any = None
-        self._api_error: type[BaseException] = NeverRaised
 
     def _ensure(self) -> None:
         if not self._api_key:
-            raise ProviderError(self.name, "no GEMINI api key configured")
+            raise ProviderError(self.name, "no GEMINI api key configured", configured=False)
         if self._client is None:
             try:
                 from google import genai
-                from google.genai import errors, types
+                from google.genai import types
             except ImportError as exc:  # pragma: no cover
-                raise ProviderError(self.name, "google-genai SDK not installed") from exc
+                raise ProviderError(
+                    self.name, "google-genai SDK not installed", configured=False
+                ) from exc
             self._client = genai.Client(api_key=self._api_key)
             self._types = types
-            self._api_error = errors.APIError
 
     async def chat(self, req: ChatRequest, model: str) -> ProviderResult:
         self._ensure()
@@ -116,21 +112,11 @@ class GeminiProvider:
             config["temperature"] = req.temperature
         if req.json_schema is not None:
             config["response_mime_type"] = "application/json"
-            if _schema_is_supported(req.json_schema):
-                config["response_schema"] = req.json_schema
-            else:
-                # Nested models produce $defs, which Gemini rejects. Fall back to
-                # JSON mode with the schema in the instruction.
-                config["system_instruction"] = _with_schema(system, req.json_schema)
+            config["response_json_schema"] = req.json_schema
         return contents, self._types.GenerateContentConfig(**config)
 
     def _error(self, exc: Exception) -> ProviderError:
-        if isinstance(exc, self._api_error):
-            rate_limited = getattr(exc, "code", None) == _TOO_MANY_REQUESTS
-            return ProviderError(
-                self.name, str(exc), rate_limited=rate_limited, retryable=is_transient(exc)
-            )
-        return ProviderError(self.name, str(exc), retryable=is_transient(exc))
+        return provider_error(self.name, exc)
 
     def _split(self, req: ChatRequest) -> tuple[str, list[dict[str, Any]]]:
         """System text and the turn list, in Gemini's own vocabulary."""
@@ -161,13 +147,8 @@ class GeminiProvider:
     async def _embed(self, req: EmbeddingsRequest, model: str) -> Any:
         try:
             return await self._client.aio.models.embed_content(model=model, contents=req.input)
-        except self._api_error as exc:
-            rate_limited = getattr(exc, "code", None) == _TOO_MANY_REQUESTS
-            raise ProviderError(
-                self.name, str(exc), rate_limited=rate_limited, retryable=is_transient(exc)
-            ) from exc
         except Exception as exc:
-            raise ProviderError(self.name, str(exc), retryable=is_transient(exc)) from exc
+            raise self._error(exc) from exc
 
     async def _count_tokens(self, req: EmbeddingsRequest, model: str) -> int:
         """Billing only — a failure here must not fail vectors that came back
@@ -185,16 +166,6 @@ class GeminiProvider:
     async def aclose(self) -> None:
         """No-op: the SDK client owns no session this adapter must close."""
         return None
-
-
-def _schema_is_supported(schema: dict[str, Any]) -> bool:
-    """Whether Gemini's schema dialect will accept this document as-is."""
-    return "$defs" not in schema and "$ref" not in compact_json(schema)
-
-
-def _with_schema(system: str, schema: dict[str, Any]) -> str:
-    instruction = schema_instruction(schema)
-    return f"{system}\n\n{instruction}" if system else instruction
 
 
 def _name_of(value: object) -> str | None:

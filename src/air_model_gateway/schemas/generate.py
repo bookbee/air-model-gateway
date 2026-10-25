@@ -23,6 +23,13 @@ FinishReason = Literal["stop", "length", "refusal", "other"]
 #: `Provider`, so adding a provider can't leave pins to it rejected.
 PIN_PATTERN = rf"^({'|'.join(re.escape(p.value) for p in Provider)}):.+$"
 
+#: Size limits, checked up front so an oversized request is an immediate 422
+#: rather than a provider tied up for a long time before it fails. The
+#: character total is about 200k tokens, the smallest cloud context window in
+#: the chains (Claude); a local model reads far less and truncates.
+MAX_MESSAGES = 500
+MAX_TOTAL_CHARS = 800_000
+
 # Shown in docs/openapi.json and the /docs page.
 _EXAMPLES: list[JsonValue] = [
     {"messages": [{"role": "user", "content": "Say hi"}], "max_tokens": 50},
@@ -78,9 +85,11 @@ class GenerateInput(BaseModel):
     )
     messages: list[Message] = Field(
         min_length=1,
+        max_length=MAX_MESSAGES,
         description=(
             "The whole conversation, oldest first. The gateway keeps no history: the "
-            "caller sends every turn it wants the model to see, on every call."
+            "caller sends every turn it wants the model to see, on every call. At most "
+            f"{MAX_MESSAGES} messages and {MAX_TOTAL_CHARS:,} characters of content in all."
         ),
     )
     max_tokens: int | None = Field(
@@ -144,6 +153,15 @@ class GenerateInput(BaseModel):
     def _pin_stands_alone(self) -> GenerateInput:
         if self.pin is not None and ("model" in self.model_fields_set or self.provider):
             raise ValueError("pin names the exact model: send it without model or provider")
+        return self
+
+    @model_validator(mode="after")
+    def _within_size_limit(self) -> GenerateInput:
+        total = sum(len(m.content) for m in self.messages)
+        if total > MAX_TOTAL_CHARS:
+            raise ValueError(
+                f"messages hold {total:,} characters; the limit is {MAX_TOTAL_CHARS:,}"
+            )
         return self
 
 

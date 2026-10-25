@@ -24,8 +24,15 @@ globals.
 | `router` | `ModelRouter` | five adapters, resilience settings, and an `admit` callback enforcing `provider_quotas` |
 | `prices` | `PriceBook` | `pricing.yaml` |
 
-Before building anything, outside `local` `create_app` raises `ConfigError` if the
-policy, routing or pricing file is missing or no service tokens are configured. The
+Before building anything, outside `local` `create_app` raises `ConfigError` if:
+- the policy, routing or pricing file is missing, or no service tokens are configured;
+- the policy grants an embedding name routing doesn't publish;
+- a chain names a paid model pricing doesn't list;
+- a service that can reach a paid model has no `daily_budget_usd`
+  (`main.py::_unbudgeted_services`: a class whose chain has a paid rung, a paid
+  embedding model, or `pin`).
+
+It also sets `build_info{version,revision}`. The
 lifespan closes the provider clients and the Redis connection on shutdown. Outside
 `local`, booting without Redis logs `redis.not_configured`, because cache, limits and
 spend are then per replica.
@@ -42,11 +49,15 @@ precedence, highest first:
 4. `.env`;
 5. defaults.
 
-`get_settings()` is cached.
+`get_settings()` is cached. At boot the gateway logs `config.unknown_keys` with the
+names (never the values) of any `AIR_MODEL_GATEWAY_*` variable, in the environment or
+`.env`, that no setting reads: settings ignore extra keys, so a misspelt or retired one
+would otherwise do nothing silently (`config.py::unknown_keys`).
 
 | Group | Key | Default | Meaning |
 |---|---|---|---|
 | — | `environment` | `local` | `local`\|`staging`\|`prod`; only `local` honours policy `default_allow` |
+| — | `revision` | `unknown` | The build's git revision; the image bakes it in (`REVISION` build arg), `make run` sets it. Shown by `/v1/health` |
 | `log` | `level`, `render` | `INFO`, `console` | `render`: `console`\|`json` |
 | `security` | `service_tokens` | `{}` | `token:service` CSV or mapping |
 | `ollama` | `base_url`, `keep_alive` | `http://localhost:11434`, `30m` | `keep_alive` sent on every call |
@@ -73,15 +84,20 @@ consumer-facing explanation is [04-integration.md](04-integration.md).
 |---|---|---|---|
 | POST | `/v1/generate` | Text from messages, optionally structured JSON | authN, policy(`inference`, `generate`), rate limit, model access, daily budget |
 | POST | `/v1/embed` | One vector per input text | authN, policy(`inference`, `embed`), rate limit, model access, daily budget |
-| GET | `/v1/health` | Liveness | none |
-| GET | `/v1/ready` | Readiness: 200 if any provider answers, else 503; reports Redis | none |
-| GET | `/v1/capabilities` | Version, environment, configured providers, and for the caller: each class's chain and whether it is granted, preferred providers, `pin`, embedding models | authN |
+| GET | `/v1/health` | Liveness, with `version` and the build's `revision` | none |
+| GET | `/v1/ready` | Readiness: 200 if any provider answers, else 503; reports Redis. A provider whose key was refused on its last 3 calls reports false | none |
+| GET | `/v1/capabilities` | Version, environment, configured providers, and for the caller: each class's chain, whether it is granted (`allowed`) and servable here (`available`: some provider behind it is configured), preferred providers, `pin`, embedding models (same two flags) | authN |
 | GET | `/v1/admin/policy` | Effective policy document | authN, policy(`admin`, `admin_read`) |
 | GET | `/metrics` | Prometheus exposition | none |
 
 Both model routes are thin: `require_principal`, then `api/v1/model_calls.py`'s
 `admit` (policy, rate limit, model access) and `generate` or `embed` (cache, budget,
 router, pricing, spend, metrics, audit), so the two can't drift apart.
+
+Every `/v1` router uses `api/deps.py::AuthenticatedRoute`: for a route that depends on
+`require_principal`, it checks the key before FastAPI reads the body, so an anonymous
+request is 401 whatever its body (FastAPI parses and validates the body before running
+any dependency). Routes without the dependency are untouched.
 
 ### Wire contracts (`schemas/generate.py`, `schemas/embed.py`)
 
@@ -90,7 +106,7 @@ class GenerateInput(BaseModel):
     model: ModelClass = AUTO                  # local | auto | cloud
     provider: Provider | None = None          # preference within the class
     pin: str | None = None                    # provider:model; granted services only
-    messages: list[Message]                   # required, at least one
+    messages: list[Message]                   # required, 1..500, 800,000 characters in all
     max_tokens: int | None = None             # >= 1
     temperature: float | None = None          # 0..2; not forwarded to Anthropic
     json_schema: dict[str, Any] | None = None # structured output
@@ -115,11 +131,13 @@ class GenerateOutput(GenerateSummary):
 
 class EmbedInput(BaseModel):
     model: str                                # <local|cloud>-<dims>-v<version>, required
-    input: list[str]                          # required, at least one
+    input: list[str]                          # required, 1..2048 texts of <= 32,000 characters
 
 class EmbedOutput(BaseModel):
     id: str
-    model: str                                # store it with the vectors
+    embedding_model: str                      # the published name: store it with the vectors
+    dimensions: int                           # every vector's length
+    model: str                                # the provider's model behind the name
     provider: Provider
     embeddings: list[list[float]]             # one per input, in order
     usage: Usage                              # total_tokens == prompt_tokens
@@ -129,8 +147,11 @@ class EmbedOutput(BaseModel):
 Both inputs (and `Message`) forbid unknown fields: an option the gateway doesn't
 implement (`tools`, `top_p`, `stream_options`, a message `name`) is a 422 naming the field, not
 silently ignored. `Message.role` is `system`, `user` or `assistant`. Out-of-range values are the caller's
-422, not a provider 400 that would walk the whole chain. The 422 `detail` lists
-`field: message` clauses and never echoes the input (it may hold prompts). A caller's
+422, not a provider 400 that would walk the whole chain. So are the size limits
+(`MAX_MESSAGES`, `MAX_TOTAL_CHARS`, `MAX_EMBED_INPUTS`, `MAX_EMBED_TEXT_CHARS`): an
+oversized request fails at once rather than tying up a provider before it fails. The
+422 `detail` lists `field: message` clauses (a body that isn't JSON: `body is not valid
+JSON (at character N)`) and never echoes the input (it may hold prompts). A caller's
 `X-Request-ID` is kept only if it is 1–128 characters of `[A-Za-z0-9._:-]`; otherwise a
 fresh id is used.
 
@@ -158,6 +179,9 @@ served with `Cache-Control: no-cache` and `X-Accel-Buffering: no`:
   final item becomes an `error` event and is reported to the rung's breaker
   (`router.record_stream_failure`).
 - **A cache hit** replays as `start` (`cached: true`), one `delta`, `done`.
+- **A refusal** is known only when the final item arrives, after the model's text
+  has gone out as `delta`s; `done` then has `refusal: true`, and the caller discards
+  the deltas (the non-streamed answer's `content` is empty).
 - **Client disconnect:** the response task is cancelled; the generator's `finally`
   closes the provider stream (the provider stops generating) and logs `model.call`
   with `stream_outcome=client_disconnected` and `streamed_chars`. Usage is unknown
@@ -219,8 +243,11 @@ without touching adapters.
 - **Model choice** (`api/v1/model_calls.py::choose_generate`, `choose_embed`): the
   policy decides whether the service may make the choice (403 `policy_denied`; `pin` is
   allowed for any service locally, by grant elsewhere), then the catalog resolves it
-  (422 `invalid_model_choice` if it means nothing). Outside local, startup refuses a
-  policy that grants an embedding name routing doesn't publish.
+  (422 `invalid_model_choice` if it means nothing). A pin to a paid model the price
+  table doesn't list is also 422: it would bill at the provider and count $0 against
+  the budget. Outside local, startup refuses a policy that grants an embedding name
+  routing doesn't publish, a routing file naming a paid model pricing doesn't list,
+  and a service that can reach a paid model without a `daily_budget_usd` (§1).
 - **Rate limits** (`policy/ratelimit.py`): token bucket of capacity `rpm`, refilling at
   `rpm/60` per second, keyed by `(service, resource)`. Each call checks
   `(service, "inference")`. Provider quotas use the same buckets under the service
@@ -236,7 +263,8 @@ without touching adapters.
   `<prefix>spend:<service>:<date>` (`INCRBYFLOAT`, expires after two days) or in
   memory. Checked before a paid call (cache hits pass), added after. Over budget:
   429 `budget_exceeded` with `Retry-After` to the next UTC day. Soft: in-flight calls
-  still complete and count.
+  still complete and count, so the overshoot is at most the service's concurrent paid
+  calls times the cost of one.
 
 ## 5. Routing and resilience (`gateway/router.py`, `gateway/resilience.py`)
 
@@ -248,8 +276,8 @@ runs the chain the catalog returns:
   and the rest follow ("prefer", not "only"); a provider absent from the chain is a
   `ModelSelectionError` (422).
 - **A pin** → one rung, `provider:model`, no fallback.
-- **An embedding name** → its one model; the response's vectors must have the name's
-  dimension (else 502).
+- **An embedding name** → its one model; the response must hold one vector per input
+  text, each of the name's dimension (else 502; the call's spend still counts).
 
 At load, every class must have a chain, a `local` chain may only use local providers
 (`ollama`, `llama.cpp`) and a `cloud` chain only cloud ones, and each embedding name
@@ -267,22 +295,44 @@ class means makes earlier answers miss instead of being served from the old mode
    counts as a transient failure (`provider_timeouts_total`).
 5. **`ProviderError`:**
    - transient and not throttled: counts against the breaker;
-   - a 429 (`rate_limited`) or a permanent error (400, missing key): releases the breaker
-     without counting, since neither says the provider is unhealthy.
+   - a 429 (`rate_limited`) or a permanent error (400, missing key, refused key):
+     releases the breaker without counting, since neither says the provider is
+     unhealthy.
+   Each carries the provider's HTTP `status` and one of these (`ProviderError.reason`):
+   - `auth`: the provider refused the gateway's own key or account (401, 402, 403, or a
+     message `_common.is_auth_failure` recognises: Google's 400 `API_KEY_INVALID`,
+     Anthropic's 400 "credit balance is too low", OpenAI's 429 `insufficient_quota`).
+     Never rejected, throttled or retried; logged at error level. After 3 in a row
+     (`AUTH_FAILURES_UNHEALTHY`) `/v1/ready` reports the provider false, until a call
+     to it succeeds.
+   - `not_configured`: no key or SDK for the provider.
+   - `rejected`: any other 400, 413 or 422. The request itself is invalid for that
+     model.
+   - `rate_limited`, `not_found` (404), `unavailable` (transient), `other`.
 6. **Any other exception** (an adapter bug, an SDK change): logged with its traceback
-   (`provider.unexpected_error`), recorded as a non-retryable failure, breaker released.
-7. **Success:** resets the breaker and returns.
+   (`provider.unexpected_error`), recorded as a non-retryable failure with reason
+   `adapter`, breaker released.
+7. **Success:** resets the breaker and the provider's auth-failure count, and returns.
+
+Every rung that is called and fails increments
+`rung_failures_total{provider,model,reason}` (plus `timeout` from step 4). Failover hides
+these failures from callers, so this counter is where they show.
 
 **After a failed pass:**
 - If retries remain and any failure was retryable, sleep
   `backoff_seconds(base, n) = base · 2^(n-1) · U[0.5, 1.5)` and walk again
   (`chain_retries_total`).
 - Otherwise raise `ProviderError`. It is `rate_limited` (→ 429) only if every rung
-  failed with a rate limit; anything else is 502.
+  failed with a rate limit, and `rejected` (→ 422 `provider_rejected`) only if every
+  rung rejected the request; anything else is 502. A pin whose provider answers 404 is
+  422 `invalid_model_choice` (the caller named the model); a 404 on a class's chain is
+  the owner's misconfiguration, so 502.
 
 **Transient** (`providers/_common.py::is_transient`):
 - HTTP status 408, 409, 425, 429 or 5xx, read from `status_code`, `code` or an httpx
-  response.
+  response (`http_status`). Adapters build every `ProviderError` from an SDK or HTTP
+  failure with `provider_error`, so status, `retryable` and `rate_limited` are read the
+  same way everywhere.
 - Or a transport, connection or timeout error with no status.
 
 Provider SDKs are built with `max_retries=0` so the router is the only retry layer.
@@ -302,7 +352,9 @@ on any failure or cancellation). It returns an `OpenedStream` (`model`, `first`,
 lets a later failure count toward the rung's breaker.
 
 **Health:** `router.health()` probes every adapter concurrently. Each adapter probe has
-its own ~2 s deadline and makes a single attempt.
+its own ~2 s deadline and makes a single attempt. A cloud adapter's probe can only say
+its key is set, so a provider whose key was refused on its last 3 calls reports false
+whatever its probe says.
 
 ## 6. Provider adapters (`gateway/providers/`)
 
@@ -327,10 +379,10 @@ is a `ProviderError`.
 
 | Adapter | Structured output | Notes |
 |---|---|---|
-| `ollama` | `format` = the JSON Schema | Plain HTTP; sends `keep_alive` on every call; a non-JSON body is a `ProviderError`; health = `/api/tags` |
+| `ollama` | `format` = the JSON Schema | Plain HTTP; sends `keep_alive` on every call; an error's detail is the status plus Ollama's own reason from the body (`404 model 'x' not found`); a non-JSON body is a `ProviderError`; health = `/api/tags` |
 | `anthropic` | Forced tool whose `input_schema` is the schema | System messages become cacheable system blocks (`cache_prefix`); in a conversation (an assistant turn present) the last turn is also a cache breakpoint, so the next turn reads the history at the cache rate (one-shot calls aren't marked: a cache write bills above input); `system` sent only when set; `temperature` never sent (API version `2026-10-21` rejects sampling parameters); no embeddings |
-| `openai` | JSON mode plus schema in the system prompt | Cached prompt tokens split out of `prompt_tokens`; `content_filter` is a refusal |
-| `gemini` | Native `response_schema`; schemas with `$defs`/`$ref` fall back to JSON mode plus instruction | Thinking tokens billed as completion; embeddings priced via a concurrent `count_tokens` call |
+| `openai` | JSON mode plus schema in the system prompt | `max_completion_tokens` (gpt-5 and o-series reject `max_tokens`); `temperature` only when set; cached prompt tokens split out of `prompt_tokens`; `content_filter` is a refusal |
+| `gemini` | `response_json_schema`: standard JSON Schema, union types and `$defs`/`$ref` included (not `response_schema`, Gemini's OpenAPI subset, on which the SDK crashes for `"type": ["string", "null"]`) | Thinking tokens billed as completion; embeddings priced via a concurrent `count_tokens` call |
 | `llama.cpp` (`self_hosted`) | Schema in the system prompt only | Any OpenAI-compatible server; no `response_format`, because servers disagree on its dialect |
 
 `Provider.SELF_HOSTED` has the value `"llama.cpp"`, naming the backend actually
@@ -368,14 +420,17 @@ limiter (service limits and provider quotas) and the spend ledger all go through
 ## 9. Pricing (`gateway/cost.py`)
 
 `deploy/pricing.yaml` holds USD per **million** tokens per model, plus two ratios applied
-to the input rate: `cache_read_ratio` (0.1) and `cache_write_ratio` (2.0).
+to the input rate: `cache_read_ratio` (0.1) and `cache_write_ratio` (1.25, Anthropic's 5-minute cache write).
 
 A call is free when either:
 - its provider is `ollama` or `llama.cpp`, or
 - its model name starts with a `local_prefixes` entry.
 
 A model missing from the table prices at 0 and increments
-`model_unpriced_total{provider,model}`.
+`model_unpriced_total{provider,model}`. Outside local, startup refuses a routing file
+naming an unpriced paid model, and a pin to one is 422, so the counter catches what
+those checks can't see: a local run on such a routing file, or a provider reporting a
+model name other than the one asked for.
 
 ## 10. Errors
 
@@ -386,11 +441,14 @@ RFC 9457 `application/problem+json` with `type`, `title`, `status`, `code`, `det
 |---|---|---|
 | 401 | `unauthorized` | Missing or unknown `X-API-Key` |
 | 403 | `policy_denied` | No grant for this operation, or a class, embedding model, preferred provider or `pin` outside the service's grant |
-| 422 | `invalid_model_choice` | An unpublished embedding name, a provider the class doesn't offer, a malformed `pin` |
-| 422 | `validation_error` | Malformed body (for example, `/v1/generate` without `messages`) |
+| 404 | `not_found` | No such path (the router's own error, as problem+json) |
+| 405 | `method_not_allowed` | The path exists, the method doesn't; `Allow` lists the methods |
+| 422 | `invalid_model_choice` | An unpublished embedding name, a provider the class doesn't offer, a malformed `pin`, a pin to an unpriced paid model or to one its provider doesn't have |
+| 422 | `validation_error` | Malformed body (for example, `/v1/generate` without `messages`, or over a size limit) |
+| 422 | `provider_rejected` | Every rung's provider refused the request as invalid (400, 413, 422: too long, a parameter the model won't take); `detail` has their reasons |
 | 429 | `rate_limited` | The service's bucket is empty, or every rung was throttled (provider 429 or gateway quota) |
 | 429 | `budget_exceeded` | The service's `daily_budget_usd` is spent; `Retry-After` is the next UTC day |
-| 502 | `provider_unavailable` | The chain failed |
+| 502 | `provider_unavailable` | The chain failed for any other reason (outage, timeout, missing or refused provider key, open breaker), or an embedding answer didn't match its texts or its name's dimension |
 | 500 | `internal_error` | Unhandled error (rendered by the middleware, so it carries `X-Request-ID` and is counted) |
 
 `/v1/ready`'s 503 is a plain readiness body, not a problem document.
@@ -402,8 +460,9 @@ RFC 9457 `application/problem+json` with `type`, `title`, `status`, `code`, `det
   Logging reads. In Kubernetes uvicorn runs with `--no-access-log`. Key events:
   - `model.call`: the audit line, one per served call, with service, operation
     (`generate` or `embed`), provider, model, tokens, cost_usd, cached and finish_reason;
-  - provider events: `provider.failed`, `provider.timeout`, `chain.retry`,
-    `circuit.transition`;
+  - provider events: `provider.failed` (with `reason`; error level for `auth`),
+    `provider.timeout`, `chain.retry`, `circuit.transition`;
+  - `air-model-gateway.start`, with `version` and `revision`;
   - Redis and policy: `redis.failed`, `redis.not_configured`,
     `policy.default_allow_ignored`.
 - **Metrics** (`/metrics`), all prefixed `air_model_gateway_`:
@@ -411,10 +470,13 @@ RFC 9457 `application/problem+json` with `type`, `title`, `status`, `code`, `det
 | Metric | Labels | Meaning |
 |---|---|---|
 | `requests_total` | route, method, status | HTTP requests |
+| `request_duration_seconds` (histogram) | route, method | Time to the start of the response (for a stream, to its first token); what latency SLOs use |
+| `build_info` (gauge) | version, revision | Always 1: the build each replica runs |
 | `model_tokens_total` | provider, model, kind | Tokens; `kind` is `generate` or `embed` |
 | `model_cost_usd_total` | provider, model | Spend |
 | `model_unpriced_total` | provider, model | Calls priced at 0 for lack of a price |
 | `provider_timeouts_total` | provider | Attempts cut off by the deadline |
+| `rung_failures_total` | provider, model, reason | Rungs called that failed (§5): `auth` and `adapter` each need a person; the rest, rising, is failover eating the budget |
 | `chain_retries_total` | primary_provider | Extra passes over a chain |
 | `circuit_skips_total` | provider, model | Rungs skipped by an open breaker |
 | `circuit_open` (gauge) | provider, model | 1 while a breaker is open on this replica |
@@ -459,7 +521,8 @@ Coverage by area:
   deadline as `error` events, cache replay, bookkeeping, the reference client; each
   adapter's `chat_stream` in its own provider test file.
 - **Router** (`test_gateway.py`): failover, deadlines, the 429-vs-502 rule, concurrent
-  health.
+  health, failure reasons (provider account failures are `auth`, never `rejected`) and
+  readiness after refused keys.
 - **Resilience** (`test_resilience.py`): breaker states, backoff, retry only on transient
   errors, throttles not tripping breakers.
 - **Shared state** (`test_cache.py`, `test_ratelimit.py`): keys, bounds, cross-replica

@@ -36,8 +36,9 @@ if ! kind get clusters 2>/dev/null | grep -qx "$cluster"; then
   [ -z "$previous" ] || kubectl config use-context "$previous" >/dev/null
 fi
 
-echo "building $image"
-docker build -q -t "$image" "$root" >/dev/null
+revision=${AIR_MODEL_GATEWAY_REVISION:-$(git -C "$root" describe --always --dirty --abbrev=12 2>/dev/null || echo unknown)}
+echo "building $image ($revision)"
+docker build -q --build-arg REVISION="$revision" -t "$image" "$root" >/dev/null
 kind load docker-image "$image" --name "$cluster" >/dev/null
 
 mkdir -p "$state"

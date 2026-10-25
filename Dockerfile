@@ -20,8 +20,14 @@ RUN pip install --prefix=/install --no-deps .
 
 # hadolint ignore=DL3006
 FROM ${PYTHON_IMAGE} AS runtime
+# The git revision built (CI passes the commit; the Makefile `git describe
+# --dirty`). /v1/health reports it, so a test result or an incident can name
+# the exact code that answered.
+ARG REVISION=unknown
+LABEL org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.source="https://github.com/bookbee/air-model-gateway"
 WORKDIR /app
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 AIR_MODEL_GATEWAY_REVISION="${REVISION}"
 RUN useradd --create-home --uid 10001 air
 # The service runs from the installed wheel in site-packages. Beside it, only the
 # default routing, pricing and policy files it reads by relative path; named

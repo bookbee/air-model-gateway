@@ -122,6 +122,17 @@ class ModelCatalog:
             )
         return [(provider, model)]
 
+    def all_chains(self) -> dict[str, Chain]:
+        """Every chain a call can run, by where it is configured: each class,
+        globally and per service, and each embedding model."""
+        chains = {f"generate.{c.value}": self.class_chain("", c) for c in ModelClass}
+        for service, routes in self.doc.overrides.items():
+            for c in routes.generate:
+                chains[f"{service}.{c.value}"] = self.class_chain(service, c)
+        for name, spec in self.doc.embed.items():
+            chains[f"embed.{name}"] = [(spec.provider, spec.model)]
+        return chains
+
     def describe(self, service: str) -> dict[str, dict[str, Any]]:
         """What this service's choices mean, for GET /v1/capabilities."""
         return {

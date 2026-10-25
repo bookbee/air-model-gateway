@@ -53,6 +53,25 @@ Worth adopting at the same time:
 - **429 `budget_exceeded`** (with `Retry-After`) means stop until the next UTC day;
   don't retry it like `rate_limited`.
 
+Contract changes since the two routes shipped (the fixes for the console's QA
+reports MG-001 to MG-008), all additive or tightening:
+- **New 422 `provider_rejected`:** every model in the chain refused the request as
+  invalid (too long, a parameter the model won't take). It used to be a 502 that
+  clients retried. Don't retry it.
+- **Size limits (422 `validation_error`):** `/v1/generate` takes at most 500 messages
+  and 800,000 characters in all; `/v1/embed` at most 2,048 texts of 32,000
+  characters each. air-rag: split larger re-index batches.
+- **`pin`** must name a model the gateway prices (or a local one) and its provider
+  has; otherwise 422 `invalid_model_choice`, never a $0 call or a 502.
+- **`/v1/capabilities`** adds `available` next to `allowed` on each class and
+  embedding model: whether this deployment can serve it at all. Choose from entries
+  with both true.
+- **404 and 405 are problem+json** (`not_found`, `method_not_allowed`) with a
+  `request_id`, like every other error; a leftover `/v1/inference` call now gets
+  `code: not_found`.
+- **No key is 401 whatever the body**, even when the body isn't valid JSON.
+- **Streaming:** if `done` has `refusal: true`, discard the deltas already shown.
+
 To verify locally: `make integration-up` in air-model-gateway, point the service at
 `http://localhost:9083` with its token from `deploy/local/integration/tokens.env`, run
 the service's own tests, then `make integration-test` in air-model-gateway.

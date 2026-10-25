@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from air_model_gateway.config import Settings
+from air_model_gateway.config import Settings, unknown_keys
 
 
 @pytest.fixture(autouse=True)
@@ -58,3 +58,23 @@ def test_a_missing_secrets_dir_is_not_an_error(monkeypatch: pytest.MonkeyPatch) 
 
 def test_redis_is_off_by_default() -> None:
     assert Settings().redis.url == ""
+
+
+def test_unknown_keys_names_retired_and_misspelt_settings_only(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "AIR_MODEL_GATEWAY_GATEWAY__DEFAULT_MODEL=llama3.2:3b\n"
+        "AIR_MODEL_GATEWAY_OLLAMA__BASE_URL=http://localhost:11434\n"
+    )
+    environ = {
+        "AIR_MODEL_GATEWAY_PROVIDERS__GEMINI_KEY": "secret-value",  # misspelt
+        "AIR_MODEL_GATEWAY_SECRETS_DIR": "/run/secrets",  # not a setting, but known
+        "AIR_MODEL_GATEWAY_ENVIRONMENT": "local",
+        "PATH": "/usr/bin",
+    }
+    unknown = unknown_keys(environ, env_file)
+    assert unknown == [
+        "AIR_MODEL_GATEWAY_GATEWAY__DEFAULT_MODEL",
+        "AIR_MODEL_GATEWAY_PROVIDERS__GEMINI_KEY",
+    ]
+    assert "secret-value" not in str(unknown)  # names only, never values

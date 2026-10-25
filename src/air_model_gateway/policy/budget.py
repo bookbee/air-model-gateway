@@ -7,8 +7,11 @@ unreachable (each replica then caps on its own view, which undercounts).
 
 The cap is soft by design: it is checked before a call and the cost added
 after, so calls already in flight when the budget is reached still complete
-and count. Holding a reservation per call would make every paid call two
-Redis round trips and still guess the cost wrong.
+and count. The overshoot is bounded by what is in flight at that moment: at
+most the service's concurrent paid calls times the cost of one (its rate limit
+caps the concurrency). Holding a reservation per call would make every paid
+call two Redis round trips and still guess the cost wrong, since the cost is
+only known once the provider reports usage.
 """
 
 from __future__ import annotations

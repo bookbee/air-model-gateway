@@ -28,7 +28,7 @@ _FREE_PROVIDERS: Final[frozenset[Provider]] = frozenset({Provider.OLLAMA, Provid
 # authoritative table is deploy/pricing.yaml.
 DEFAULT_PRICING: Final[PricingDoc] = PricingDoc(
     cache_read_ratio=0.1,
-    cache_write_ratio=2.0,
+    cache_write_ratio=1.25,
     local_prefixes=["llama", "qwen", "mistral", "mixtral", "gemma", "phi", "deepseek"],
     models={
         "claude-haiku-4-5": ModelPrice(input=1.00, output=5.00),
@@ -77,6 +77,12 @@ class PriceBook:
     def is_free(self, provider: Provider, model: str) -> bool:
         """Whether the call costs nothing — locally served, so electricity not tokens."""
         return provider in _FREE_PROVIDERS or model.strip().lower().startswith(self._prefixes)
+
+    def is_priced(self, provider: Provider, model: str) -> bool:
+        """Whether a call to this model can be costed: free, or in the table. A
+        model that isn't would bill at the provider and count $0 against every
+        budget, so the caller may not pin it and a chain may not name it."""
+        return self.is_free(provider, model) or model.strip().lower() in self._doc.models
 
     def price(self, provider: Provider, model: str, usage: Usage) -> float:
         if self.is_free(provider, model):

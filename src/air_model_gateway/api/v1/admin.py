@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from air_model_gateway.api.deps import enforce_policy, require_principal
+from air_model_gateway.api.deps import AuthenticatedRoute, enforce_policy, require_principal
 from air_model_gateway.api.openapi import problems
 from air_model_gateway.constants import Action
 from air_model_gateway.schemas.common import Principal
 from air_model_gateway.schemas.policy import PolicyDoc
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], route_class=AuthenticatedRoute)
 
 
 @router.get(

@@ -3,8 +3,9 @@
 Worth testing directly rather than through the router: Gemini is the only
 provider here whose request shape differs structurally from the others. It has
 no `system` role, spells the assistant `model`, and enforces a JSON Schema at
-decode time — in a dialect that rejects the `$defs` pydantic emits for nested
-models. Each of those is a silent wrong-answer if it regresses, not a crash.
+decode time. Each of those is a silent wrong-answer if it regresses, not a
+crash. The fake replaces only the network call: the request config is built
+with the real SDK types, which is where a schema the SDK can't take crashes.
 """
 
 from __future__ import annotations
@@ -98,13 +99,12 @@ def _response(
 
 
 def _provider(response: Any, *, count: Any = None) -> tuple[GeminiProvider, _FakeModels]:
-    from google.genai import errors, types
+    from google.genai import types
 
     provider = GeminiProvider("AIza-test")
     models = _FakeModels(response, count=count)
     provider._client = SimpleNamespace(aio=SimpleNamespace(models=models))
     provider._types = types
-    provider._api_error = errors.APIError
     return provider, models
 
 
@@ -136,24 +136,28 @@ async def test_system_becomes_an_instruction_and_never_a_turn() -> None:
     assert [c["role"] for c in call["contents"]] == ["user", "model"]
 
 
-async def test_a_flat_schema_is_enforced_at_decode_time() -> None:
+#: An optional field written the usual JSON Schema way: a union with null.
+NULLABLE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"label": {"type": "string"}, "reason": {"type": ["string", "null"]}},
+    "required": ["label", "reason"],
+    "additionalProperties": False,
+}
+
+
+@pytest.mark.parametrize(
+    "schema", [FLAT_SCHEMA, NESTED_SCHEMA, NULLABLE_SCHEMA], ids=["flat", "nested", "nullable"]
+)
+async def test_every_schema_is_enforced_at_decode_time_unchanged(schema: dict[str, Any]) -> None:
     provider, models = _provider(_response())
-    await provider.chat(_req([Message(role="user", content="x")], json_schema=FLAT_SCHEMA), "m")
+    await provider.chat(_req([Message(role="user", content="x")], json_schema=schema), "m")
 
     config = models.calls[0]["config"]
     assert config.response_mime_type == "application/json"
-    assert config.response_schema is not None
-
-
-async def test_a_nested_schema_degrades_to_json_mode_rather_than_400ing() -> None:
-    """Gemini rejects $defs/$ref, so the schema moves into the instruction."""
-    provider, models = _provider(_response())
-    await provider.chat(_req([Message(role="user", content="x")], json_schema=NESTED_SCHEMA), "m")
-
-    config = models.calls[0]["config"]
+    assert config.response_json_schema == schema
+    # Not the OpenAPI-subset field, which crashes on a union type.
     assert config.response_schema is None
-    assert config.response_mime_type == "application/json"
-    assert "JSON Schema" in (config.system_instruction or "")
+    assert config.system_instruction is None
 
 
 async def test_cached_tokens_are_not_billed_twice() -> None:

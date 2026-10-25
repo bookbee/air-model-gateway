@@ -392,3 +392,93 @@ async def test_cache_false_always_asks_the_provider() -> None:
         third = await client.post("/v1/generate", headers=SENT, json={**payload, "cache": True})
     assert (first["cached"], second["cached"], third.json()["cached"]) == (False, False, False)
     assert router.calls == 3
+
+
+GEN = {"messages": [{"role": "user", "content": "x"}]}
+JSON = {"Content-Type": "application/json"}
+
+
+async def test_a_request_every_provider_rejected_is_the_callers_422_not_a_502() -> None:
+    error = ProviderError(Provider.OLLAMA, "all providers failed: 400 too long", status=400)
+    async for client in _client(_FakeRouter(error=error)):
+        r = await client.post("/v1/generate", headers=SENT, json=GEN)
+    assert (r.status_code, r.json()["code"]) == (422, "provider_rejected")
+    assert "too long" in r.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("choice", "status", "code"),
+    [
+        ({"pin": "ollama:no-such-model"}, 422, "invalid_model_choice"),  # the caller named it
+        ({"model": "local"}, 502, "provider_unavailable"),  # the owner's chain is broken
+    ],
+)
+async def test_a_model_the_provider_doesnt_have_is_the_callers_only_when_pinned(
+    choice: dict[str, Any], status: int, code: str
+) -> None:
+    error = ProviderError(Provider.OLLAMA, "404 model 'no-such-model' not found", status=404)
+    async for client in _client(_FakeRouter(error=error)):
+        r = await client.post("/v1/generate", headers=SENT, json={**GEN, **choice})
+    assert (r.status_code, r.json()["code"]) == (status, code)
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "status", "code"),
+    [
+        ("POST", "/v1/inference", 404, "not_found"),
+        ("GET", "/v1/generate", 405, "method_not_allowed"),
+    ],
+)
+async def test_routing_errors_are_problem_documents(
+    method: str, path: str, status: int, code: str
+) -> None:
+    async for client in _client(_FakeRouter()):
+        r = await client.request(method, path, headers=SENT)
+    assert r.status_code == status
+    assert r.headers["content-type"] == "application/problem+json"
+    body = r.json()
+    assert body["code"] == code
+    assert body["request_id"] == r.headers["X-Request-ID"]
+    if status == 405:
+        assert r.headers["allow"] == "POST"
+
+
+@pytest.mark.parametrize("path", ["/v1/generate", "/v1/embed"])
+async def test_no_key_is_401_even_when_the_body_is_not_json(path: str) -> None:
+    broken = b'{"messages": ['
+    async for client in _client(_FakeRouter()):
+        anonymous = await client.post(path, content=broken, headers=JSON)
+        keyed = await client.post(path, content=broken, headers={**SENT, **JSON})
+    assert (anonymous.status_code, anonymous.json()["code"]) == (401, "unauthorized")
+    assert keyed.status_code == 422
+    assert keyed.json()["detail"] == "body is not valid JSON (at character 14)"
+
+
+async def test_routes_without_a_key_requirement_still_answer_anonymously() -> None:
+    async for client in _client(_FakeRouter()):
+        assert (await client.get("/v1/health")).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "field"),
+    [
+        ("/v1/embed", {"model": "local-768-v1", "input": ["t"] * 2049}, "input"),
+        ("/v1/embed", {"model": "local-768-v1", "input": ["t" * 32_001]}, "input.0"),
+        ("/v1/generate", {"messages": [{"role": "user", "content": "t"}] * 501}, "messages"),
+        (
+            "/v1/generate",
+            {"messages": [{"role": "user", "content": "t" * 400_001}] * 2},
+            "800,000",
+        ),
+    ],
+    ids=["embed-count", "embed-text", "generate-count", "generate-chars"],
+)
+async def test_oversized_requests_are_refused_before_any_provider_call(
+    path: str, body: dict[str, Any], field: str
+) -> None:
+    router = _FakeRouter(ProviderResult(model="m", embeddings=[[0.0]]))
+    async for client in _client(router):
+        r = await client.post(path, headers=SENT, json=body)
+    assert (r.status_code, r.json()["code"]) == (422, "validation_error")
+    assert field in r.json()["detail"]
+    assert router.last_chain is None  # no provider was asked

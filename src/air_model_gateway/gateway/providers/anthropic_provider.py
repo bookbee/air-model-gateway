@@ -6,7 +6,7 @@ from typing import Any
 
 from air_model_gateway.constants import Provider
 from air_model_gateway.gateway.base import ProviderError, ProviderResult
-from air_model_gateway.gateway.providers._common import NeverRaised, int_attr, is_transient
+from air_model_gateway.gateway.providers._common import NeverRaised, int_attr, provider_error
 from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Usage
 
 # stop_reason the safety layer sets when it declines; content carries nothing.
@@ -31,12 +31,14 @@ class AnthropicProvider:
 
     def _ensure(self) -> None:
         if not self._api_key:
-            raise ProviderError(self.name, "no ANTHROPIC api key configured")
+            raise ProviderError(self.name, "no ANTHROPIC api key configured", configured=False)
         if self._client is None:
             try:
                 import anthropic
             except ImportError as exc:  # pragma: no cover
-                raise ProviderError(self.name, "anthropic SDK not installed") from exc
+                raise ProviderError(
+                    self.name, "anthropic SDK not installed", configured=False
+                ) from exc
             self._client = anthropic.AsyncAnthropic(api_key=self._api_key, max_retries=0)
             self._rate_limit_error = anthropic.RateLimitError
 
@@ -115,9 +117,7 @@ class AnthropicProvider:
         return request
 
     def _error(self, exc: Exception) -> ProviderError:
-        if isinstance(exc, self._rate_limit_error):
-            return ProviderError(self.name, str(exc), rate_limited=True)
-        return ProviderError(self.name, str(exc), retryable=is_transient(exc))
+        return provider_error(self.name, exc, throttled=isinstance(exc, self._rate_limit_error))
 
     def _system_blocks(self, req: ChatRequest) -> list[dict[str, Any]] | None:
         text = "\n".join(m.content for m in req.messages if m.role == "system")
@@ -125,6 +125,8 @@ class AnthropicProvider:
             return None
         block: dict[str, Any] = {"type": "text", "text": text}
         if req.cache_prefix:
+            # No `ttl`: the 5-minute cache, whose writes bill at 1.25x input, the
+            # cache_write_ratio in pricing.yaml. A `1h` ttl bills 2x.
             block["cache_control"] = {"type": "ephemeral"}
         return [block]
 

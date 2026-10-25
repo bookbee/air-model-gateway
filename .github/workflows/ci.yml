@@ -39,7 +39,7 @@ jobs:
           version: "0.5.11"
       - run: make audit
       - run: make lint-scripts
-      - run: docker build -t air-model-gateway:ci .
+      - run: docker build --build-arg REVISION=${{ github.sha }} -t air-model-gateway:ci .
 
   deploy-config:
     # Chart lint, schema validation of every environment's manifests, and

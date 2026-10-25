@@ -260,11 +260,11 @@ air-model-gateway/
 │   │   ├── cache.py              Response cache: in-memory, or Redis with memory fallback
 │   │   ├── cost.py               PriceBook: usage → USD from pricing.yaml
 │   │   └── providers/            One adapter per provider, all behind ModelProvider
-│   │       ├── _common.py        Shared plumbing: transient-error test, schema prompt, …
+│   │       ├── _common.py        Shared plumbing: provider errors, transient-error test, schema prompt, …
 │   │       ├── ollama_provider.py       Ollama over plain HTTP (keep_alive on every call)
 │   │       ├── anthropic_provider.py    Claude: cached system blocks, forced-tool JSON
 │   │       ├── openai_provider.py       OpenAI: JSON mode plus schema instruction
-│   │       ├── gemini_provider.py       Gemini: native response_schema; token-counted embeddings
+│   │       ├── gemini_provider.py       Gemini: native response_json_schema; token-counted embeddings
 │   │       └── self_hosted_provider.py  Any OpenAI-compatible server (llama.cpp, vLLM, TGI)
 │   │
 │   └── observability/
@@ -399,7 +399,10 @@ One image, configured entirely by environment variables or secret files:
 | `AIR_MODEL_GATEWAY_SECRETS_DIR` | Optional. A mounted directory of secret files (Vault Agent, Kubernetes secrets, cloud secret-store CSI), one file per variable. |
 
 Outside `local` the gateway refuses to start (`ConfigError`, naming what is missing) if
-the policy, routing or pricing file is absent or no service tokens are configured.
+the policy, routing or pricing file is absent, no service tokens are configured, the
+policy grants an embedding name routing doesn't publish, or routing names a paid model
+pricing doesn't list. At boot it also logs `config.unknown_keys` for any
+`AIR_MODEL_GATEWAY_*` variable no setting reads (a typo or a retired key).
 
 Probes: liveness `GET /v1/health`, readiness `GET /v1/ready`. Readiness is 503 only when
 no provider answers; Redis being down is reported but never takes a replica out of
@@ -409,6 +412,7 @@ rotation. Scrape `GET /metrics`.
 - `air_model_gateway_circuit_open == 1` for minutes: a model is down.
 - Rising `air_model_gateway_redis_errors_total`: the gateway is running degraded.
 - Any `air_model_gateway_model_unpriced_total`: spend that isn't being counted.
+- Any `air_model_gateway_adapter_errors_total`: an adapter bug that failover is hiding.
 - A rising 5xx share of `air_model_gateway_requests_total`: failing chains or gateway bugs.
 - Any `air_model_gateway_budget_rejected_total` or
   `air_model_gateway_provider_quota_rejected_total`: a budget or quota is being hit.
@@ -508,14 +512,16 @@ tell you what happened.
 | 429 `rate_limited` | The service's `rate_per_minute`, or every rung throttled (provider 429s or the gateway's `provider_quotas`) | `ratelimited_total` / `provider_quota_rejected_total`; raise the grant's rate or quota, or slow the caller |
 | 429 `budget_exceeded` | The service spent its `daily_budget_usd` | `service_cost_usd_total`; raise the budget in the policy file or wait for the next UTC day |
 | 403 "may not use the … class" / "may not prefer" / "may not pin" | The choice is outside the service's grant | Grant it in the policy files (`model_classes`, `preferred_providers`, `pin`), or choose within the grant (`/v1/capabilities` shows it) |
-| 422 `invalid_model_choice` | An unpublished embedding name, a provider the class doesn't offer, a malformed `pin` | `/v1/capabilities` lists what exists; publish a new embedding name in `routing.yaml` if needed |
-| Pod crash-loops with `ConfigError` | Missing policy/routing/pricing file or no service tokens | The message names what is missing |
-| 502 `provider_unavailable` | Every rung failed; `detail` names each one | A missing key, Ollama unreachable, a retired model name, or a breaker open (`air_model_gateway_circuit_open`). Fix the cause, or reorder the chain in `routing.yaml` |
+| 422 `invalid_model_choice` | An unpublished embedding name, a provider the class doesn't offer, a malformed `pin`, a pin to an unpriced model or one its provider doesn't have | `/v1/capabilities` lists what exists; publish a new embedding name in `routing.yaml`, or price the model in `pricing.yaml`, if needed |
+| 422 `provider_rejected` | Every rung's provider refused the request as invalid (too long, a parameter the model won't take) | `detail` has each provider's reason; the caller changes the request |
+| Pod crash-loops with `ConfigError` | Missing policy/routing/pricing file, no service tokens, an unpublished embedding grant, or an unpriced paid model in routing | The message names what is missing |
+| 502 `provider_unavailable` | Every rung failed for a reason other than the request; `detail` names each one | A missing key, Ollama unreachable, a retired model name, or a breaker open (`air_model_gateway_circuit_open`). Fix the cause, or reorder the chain in `routing.yaml` |
 | `/v1/ready` 503 | No provider answers at all | Check the Ollama / self-hosted URLs and that at least one cloud key is set |
 | `"redis": false` in `/v1/ready` | Wrong URL or password, TLS CA not mounted, or Redis down | Harmless meanwhile (degraded cache, per-replica rate limits); `redis.failed` log lines name the error |
 | Structured output doesn't parse | Answer cut off (`finish_reason: length`); thinking models use part of `max_tokens` | Raise `max_tokens` (300+); treat cut-off answers as no answer |
 | Calls slower than expected | A slow first rung, or failover after a deadline | The response's `provider`/`model` shows who answered; `air_model_gateway_provider_timeouts_total` counts deadlines |
-| `cost_usd` is 0 for a cloud model | The model is missing from `pricing.yaml` | `air_model_gateway_model_unpriced_total` counts these; add the price |
+| `cost_usd` is 0 for a cloud model | The provider reported a model `pricing.yaml` doesn't list (configured rungs and pins are checked) | `air_model_gateway_model_unpriced_total` counts these; add the price |
+| A local setting seems ignored | A misspelt or retired key (e.g. a `.env` copied from an old `.env.example`) | The `config.unknown_keys` warning at startup names it; re-copy `.env.example` |
 | GKE pod stuck in `ContainerCreating` | A secret listed in `secrets.gcp.items` has no version, or Workload Identity IAM is missing | `kubectl describe pod` shows the CSI mount error; see [03-deployment.md](03-deployment.md) §4.2 |
 | Consumer times out connecting on GKE | Its namespace isn't allowed by the NetworkPolicy | Add it to `networkPolicy.allowedNamespaces` (or label the namespace) |
 | A consumer's answers change after a routing change | The models behind its class changed | Intended if the change was; tune that service alone with an `overrides` entry if not |

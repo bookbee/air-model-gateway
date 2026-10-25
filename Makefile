@@ -69,6 +69,14 @@ endif
 
 export AIR_MODEL_GATEWAY_REDIS_URL := $(REDIS_CONTAINER_URL)
 
+# ---- build identity ----------------------------------------------------------
+# The checkout's revision (`-dirty` with uncommitted changes), baked into every
+# image this Makefile builds (the Dockerfile's REVISION build arg) and read by
+# `make run`. /v1/health reports it, so a test result can name the code that
+# produced it.
+REVISION ?= $(shell git describe --always --dirty --abbrev=12 2>/dev/null || echo unknown)
+export AIR_MODEL_GATEWAY_REVISION := $(REVISION)
+
 SOURCES := src tests docs/design
 
 .DEFAULT_GOAL := help

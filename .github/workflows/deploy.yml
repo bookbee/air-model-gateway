@@ -51,6 +51,7 @@ jobs:
           context: .
           push: true
           tags: ${{ env.REPOSITORY }}:${{ github.sha }}
+          build-args: REVISION=${{ github.sha }}
       - uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ vars.GKE_CLUSTER }}

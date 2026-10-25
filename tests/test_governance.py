@@ -75,8 +75,17 @@ def _policy(tmp_path: Path, **classifier: Any) -> str:
     doc = {
         "default_allow": False,
         "services": {
-            "air-classifier-service": {"resources": {"inference": ["generate"]}, **classifier},
-            "air-web-console": {"resources": {"inference": ["generate"]}, "pin": True},
+            # Budgets: outside local a service that reaches paid models must have one.
+            "air-classifier-service": {
+                "resources": {"inference": ["generate"]},
+                "daily_budget_usd": 100.0,
+                **classifier,
+            },
+            "air-web-console": {
+                "resources": {"inference": ["generate"]},
+                "pin": True,
+                "daily_budget_usd": 100.0,
+            },
         },
     }
     path = tmp_path / "policy.yaml"
@@ -133,6 +142,7 @@ def _gen(text: str = "hi", **choice: Any) -> dict[str, Any]:
         (CONSOLE, {"pin": "ollama:llama3.2:3b"}, 200),  # pin: true
         (CONSOLE, {"pin": "gpt-4o"}, 422),  # a pin names its provider
         (CONSOLE, {"pin": "openai:gpt-4o", "model": "cloud"}, 422),  # pin stands alone
+        (CONSOLE, {"pin": "anthropic:claude-haiku-4-5"}, 200),  # priced
     ],
 )
 async def test_outside_local_services_choose_within_their_grants(
@@ -173,7 +183,7 @@ async def test_a_choice_outside_the_grant_is_refused(
 async def test_locally_any_service_may_pin(tmp_path: Path) -> None:
     settings = _settings(_policy(tmp_path), Environment.LOCAL)
     async for c in _client(settings, _Router(_paid())):
-        r = await c.post("/v1/generate", headers=CLASSIFIER, json=_gen(pin="openai:gpt-4o"))
+        r = await c.post("/v1/generate", headers=CLASSIFIER, json=_gen(pin="openai:gpt-4.1"))
         assert r.status_code == 200
         assert r.json()["model_class"] is None
 
@@ -228,6 +238,27 @@ async def test_the_memory_ledger_keeps_only_today() -> None:
     await ledger.add("svc", 1.0)
     assert await ledger.spent_today("svc") == 1.0
     assert ("svc", "2000-01-01") not in ledger._spent
+
+
+@pytest.mark.parametrize(
+    ("vectors", "detail"),
+    [
+        ([[0.0] * 768], "1 vectors for 2 texts"),  # a short answer would misfile vectors
+        ([[0.0] * 512, [0.0] * 512], "[512]-dimension vectors"),
+    ],
+)
+async def test_embed_vectors_must_match_the_texts_and_the_name(
+    tmp_path: Path, vectors: list[list[float]], detail: str
+) -> None:
+    usage = Usage(prompt_tokens=1_000_000, total_tokens=1_000_000)
+    router = _Router(ProviderResult(model="nomic-embed-text", embeddings=vectors, usage=usage))
+    grant = {"resources": {"inference": ["generate", "embed"]}}
+    async for c in _client(_settings(_policy(tmp_path, **grant)), router):
+        r = await c.post(
+            "/v1/embed", headers=CLASSIFIER, json={"model": "local-768-v1", "input": ["a", "b"]}
+        )
+    assert (r.status_code, r.json()["code"]) == (502, "provider_unavailable")
+    assert detail in r.json()["detail"]
 
 
 # ---- provider quotas ---------------------------------------------------------
@@ -363,3 +394,64 @@ def test_outside_local_a_grant_of_an_unpublished_embedding_model_stops_startup(
     )
     with pytest.raises(ConfigError, match="local-1024-v9"):
         create_app(_settings(str(policy)))
+
+
+async def test_a_pin_to_a_paid_model_without_a_price_is_refused(tmp_path: Path) -> None:
+    """It would bill at the provider and count $0 against the daily budget."""
+    router = _Router(_paid())
+    settings = _settings(_policy(tmp_path))
+    async for c in _client(settings, router):
+        r = await c.post(
+            "/v1/generate", headers=CONSOLE, json=_gen(pin="anthropic:claude-sonnet-4-5")
+        )
+    assert (r.status_code, r.json()["code"]) == (422, "invalid_model_choice")
+    assert "no price" in r.json()["detail"]
+    assert router.last_chain is None  # refused before any provider call
+
+
+async def test_capabilities_tells_allowed_from_available(tmp_path: Path) -> None:
+    """No OpenAI key here: cloud-1536-v1 is granted but can't be served."""
+    async for c in _client(_settings(_policy(tmp_path)), _Router(_paid())):
+        caps = (await c.get("/v1/capabilities", headers=CLASSIFIER)).json()
+    assert caps["providers"]["openai"] is False
+    assert caps["embed"]["cloud-1536-v1"]["available"] is False
+    assert caps["embed"]["local-768-v1"]["available"] is True
+    # A class serves while any rung's provider is configured (Ollama always is);
+    # the classifier's `auto` is cloud-only, and no cloud key is set.
+    assert caps["generate"]["local"]["available"] is True
+    assert caps["generate"]["auto"]["available"] is False
+
+
+@pytest.mark.parametrize(
+    ("service", "needs_budget"),
+    [
+        ({"resources": {"inference": ["generate"]}}, True),  # auto and cloud are paid
+        ({"resources": {"inference": ["generate"]}, "model_classes": ["local"]}, False),
+        ({"resources": {"inference": ["embed"]}, "embed_models": ["local-768-v1"]}, False),
+        ({"resources": {"inference": ["embed"]}}, True),  # cloud-1536-v1 is paid
+        ({"resources": {"inference": ["generate"]}, "model_classes": ["local"], "pin": True}, True),
+    ],
+)
+def test_outside_local_a_service_reaching_paid_models_needs_a_budget(
+    tmp_path: Path, service: dict[str, Any], needs_budget: bool
+) -> None:
+    """One uncapped service on a shared gateway is unlimited spend on the
+    shared provider accounts."""
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(yaml.safe_dump({"services": {"air-new": service}}))
+    if needs_budget:
+        with pytest.raises(ConfigError, match="air-new paid models but no daily_budget_usd"):
+            create_app(_settings(str(policy)))
+    else:
+        create_app(_settings(str(policy)))
+
+
+def test_outside_local_a_paid_rung_without_a_price_stops_startup(tmp_path: Path) -> None:
+    routing = yaml.safe_load(Path("deploy/routing.yaml").read_text())
+    routing["generate"]["cloud"].append({"provider": "anthropic", "model": "claude-opus-9"})
+    path = tmp_path / "routing.yaml"
+    path.write_text(yaml.safe_dump(routing))
+    settings = _settings("deploy/policy/policy.staging.yaml")
+    settings.gateway.routing_config_path = str(path)
+    with pytest.raises(ConfigError, match="anthropic:claude-opus-9"):
+        create_app(settings)

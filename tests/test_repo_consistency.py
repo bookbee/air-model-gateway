@@ -18,9 +18,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from pydantic import BaseModel
-
-from air_model_gateway.config import Settings
+from air_model_gateway.config import NOT_SETTINGS, setting_names
 from air_model_gateway.constants import Provider
 from air_model_gateway.gateway.models import ModelCatalog
 from air_model_gateway.observability import metrics
@@ -35,30 +33,6 @@ _SKIP = {
     ".terraform",
     "node_modules",
 }
-# Variables that aren't settings: the secrets-dir switch, compose interpolation
-# vars the Makefile exports, and the reference client's own.
-_NOT_SETTINGS = {
-    "AIR_MODEL_GATEWAY_SECRETS_DIR",
-    "AIR_MODEL_GATEWAY_OLLAMA_URL",
-    "AIR_MODEL_GATEWAY_REDIS_URL",
-    "AIR_MODEL_GATEWAY_URL",
-    "AIR_MODEL_GATEWAY_TOKEN",
-}
-
-
-def _settings_names() -> set[str]:
-    names: set[str] = set()
-
-    def walk(model: type[BaseModel], prefix: str) -> None:
-        for field, info in model.model_fields.items():
-            kind = info.annotation
-            if isinstance(kind, type) and issubclass(kind, BaseModel):
-                walk(kind, f"{prefix}{field.upper()}__")
-            else:
-                names.add(f"{prefix}{field.upper()}")
-
-    walk(Settings, "AIR_MODEL_GATEWAY_")
-    return names
 
 
 def _files(*suffixes: str) -> list[Path]:
@@ -77,15 +51,15 @@ def _docs() -> list[Path]:
 
 def test_every_setting_is_documented_in_env_example() -> None:
     example = (ROOT / ".env.example").read_text()
-    assert sorted(n for n in _settings_names() if n not in example) == []
+    assert sorted(n for n in setting_names() if n not in example) == []
 
 
 def test_every_variable_named_anywhere_is_a_setting() -> None:
-    names = _settings_names()
+    names = setting_names()
     unknown: dict[str, str] = {}
     for path in _files(".md", ".yaml", ".yml", ".sh", ".example", "Makefile", "Dockerfile"):
         for var in set(re.findall(r"AIR_MODEL_GATEWAY_[A-Z_]*[A-Z]", path.read_text())):
-            known = var in names or var in _NOT_SETTINGS
+            known = var in names or var in NOT_SETTINGS
             is_prefix = any(n.startswith(var + "_") for n in names)
             if not (known or is_prefix):
                 unknown[var] = str(path.relative_to(ROOT))

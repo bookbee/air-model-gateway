@@ -18,10 +18,12 @@ could only ever disagree with the CLI that actually binds the socket.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from dotenv import dotenv_values
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
@@ -171,6 +173,11 @@ class Settings(BaseSettings):
     )
 
     environment: Environment = Environment.LOCAL
+    #: The build: a git revision, `-dirty` when built from an uncommitted tree.
+    #: Not configuration: the image bakes it in (Dockerfile `REVISION` build
+    #: arg) and `make run` sets it from the checkout, so /v1/health, the
+    #: startup log and `build_info` can say exactly which code answered.
+    revision: str = "unknown"
     log: LogSettings = Field(default_factory=LogSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
@@ -225,6 +232,51 @@ class _SecretsDirSource(EnvSettingsSource):
             for entry in self._directory.iterdir()
             if entry.is_file() and not entry.name.startswith(".")
         }
+
+
+#: `AIR_MODEL_GATEWAY_*` variables that aren't settings: the secrets-dir
+#: switch, compose interpolation vars the Makefile exports, and the reference
+#: client's own.
+NOT_SETTINGS: frozenset[str] = frozenset(
+    {
+        "AIR_MODEL_GATEWAY_SECRETS_DIR",
+        "AIR_MODEL_GATEWAY_OLLAMA_URL",
+        "AIR_MODEL_GATEWAY_REDIS_URL",
+        "AIR_MODEL_GATEWAY_URL",
+        "AIR_MODEL_GATEWAY_TOKEN",
+    }
+)
+
+
+def setting_names() -> set[str]:
+    """Every environment variable a setting is read from, e.g.
+    `AIR_MODEL_GATEWAY_OLLAMA__BASE_URL`."""
+    names: set[str] = set()
+
+    def walk(model: type[BaseModel], prefix: str) -> None:
+        for field, info in model.model_fields.items():
+            kind = info.annotation
+            if isinstance(kind, type) and issubclass(kind, BaseModel):
+                walk(kind, f"{prefix}{field.upper()}__")
+            else:
+                names.add(f"{prefix}{field.upper()}")
+
+    walk(Settings, "AIR_MODEL_GATEWAY_")
+    return names
+
+
+def unknown_keys(environ: Mapping[str, str], env_file: str | Path = ".env") -> list[str]:
+    """`AIR_MODEL_GATEWAY_*` names, in the environment or the `.env` file, that
+    no setting reads. Settings ignore extra keys, so a misspelt or retired one
+    (a `.env` copied from an old `.env.example`) would otherwise do nothing,
+    silently. Names only: the values may be secrets."""
+    keys = set(environ)
+    if Path(env_file).is_file():
+        keys |= set(dotenv_values(env_file))
+    known = setting_names() | NOT_SETTINGS
+    return sorted(
+        k for k in keys if k.upper().startswith("AIR_MODEL_GATEWAY_") and k.upper() not in known
+    )
 
 
 @lru_cache

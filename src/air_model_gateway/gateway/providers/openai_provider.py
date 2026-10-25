@@ -9,9 +9,9 @@ from air_model_gateway.gateway.providers._common import (
     CONTENT_FILTER_FINISH_REASON,
     NeverRaised,
     int_attr,
-    is_transient,
     openai_stream,
     openai_usage,
+    provider_error,
     with_schema_instruction,
 )
 from air_model_gateway.schemas.models import ChatRequest, EmbeddingsRequest, Usage
@@ -35,12 +35,14 @@ class OpenAIProvider:
 
     def _ensure(self) -> None:
         if not self._api_key:
-            raise ProviderError(self.name, "no OPENAI api key configured")
+            raise ProviderError(self.name, "no OPENAI api key configured", configured=False)
         if self._client is None:
             try:
                 import openai
             except ImportError as exc:  # pragma: no cover
-                raise ProviderError(self.name, "openai SDK not installed") from exc
+                raise ProviderError(
+                    self.name, "openai SDK not installed", configured=False
+                ) from exc
             self._client = openai.AsyncOpenAI(api_key=self._api_key, max_retries=0)
             self._rate_limit_error = openai.RateLimitError
 
@@ -49,11 +51,7 @@ class OpenAIProvider:
         messages = self._messages(req)
         try:
             resp = await self._client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=req.max_tokens,
-                temperature=req.temperature,
-                **self._optional(req),
+                model=model, messages=messages, **self._optional(req)
             )
         except Exception as exc:
             raise self._error(exc) from exc
@@ -80,8 +78,6 @@ class OpenAIProvider:
             stream = await self._client.chat.completions.create(
                 model=model,
                 messages=self._messages(req),
-                max_tokens=req.max_tokens,
-                temperature=req.temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 **self._optional(req),
@@ -93,14 +89,23 @@ class OpenAIProvider:
 
     @staticmethod
     def _optional(req: ChatRequest) -> dict[str, Any]:
+        """Only what the caller set. `max_completion_tokens`, not the deprecated
+        `max_tokens`, which gpt-5 and the o-series reject; every chat model takes
+        the new name. `temperature` is left out when unset rather than sent as
+        null, so a model with a fixed temperature (gpt-5, o-series) gets the
+        call it accepts. A caller who sets one for such a model gets the
+        provider's 400, as a 422 `provider_rejected`."""
+        optional: dict[str, Any] = {}
+        if req.max_tokens is not None:
+            optional["max_completion_tokens"] = req.max_tokens
+        if req.temperature is not None:
+            optional["temperature"] = req.temperature
         if req.json_schema is not None:
-            return {"response_format": {"type": "json_object"}}
-        return {}
+            optional["response_format"] = {"type": "json_object"}
+        return optional
 
     def _error(self, exc: Exception) -> ProviderError:
-        if isinstance(exc, self._rate_limit_error):
-            return ProviderError(self.name, str(exc), rate_limited=True)
-        return ProviderError(self.name, str(exc), retryable=is_transient(exc))
+        return provider_error(self.name, exc, throttled=isinstance(exc, self._rate_limit_error))
 
     def _messages(self, req: ChatRequest) -> list[dict[str, str]]:
         # JSON mode only constrains output to *some* JSON object; the schema
@@ -111,10 +116,8 @@ class OpenAIProvider:
         self._ensure()
         try:
             resp = await self._client.embeddings.create(model=model, input=req.input)
-        except self._rate_limit_error as exc:
-            raise ProviderError(self.name, str(exc), rate_limited=True) from exc
         except Exception as exc:
-            raise ProviderError(self.name, str(exc), retryable=is_transient(exc)) from exc
+            raise self._error(exc) from exc
         tokens = int_attr(resp.usage, "prompt_tokens")
         return ProviderResult(
             model=model,

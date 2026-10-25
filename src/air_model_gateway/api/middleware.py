@@ -8,7 +8,7 @@ import structlog
 from fastapi import FastAPI, Request, Response
 
 from air_model_gateway.api.errors import AppError, problem_response
-from air_model_gateway.observability.metrics import REQUESTS
+from air_model_gateway.observability.metrics import REQUEST_SECONDS, REQUESTS
 
 _REQUEST_ID_HEADER = "X-Request-ID"
 # The caller's id is echoed in a header, every log line and every error body, so
@@ -44,7 +44,8 @@ def install_middleware(app: FastAPI) -> None:
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
 
-        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        elapsed = time.perf_counter() - start
+        elapsed_ms = round(elapsed * 1000, 2)
         # The label must stay bounded. A matched route is labelled by its path
         # (this API has no path parameters, so paths are a fixed set; if one is
         # ever added, label by the route template instead). Anything unmatched
@@ -53,6 +54,7 @@ def install_middleware(app: FastAPI) -> None:
         # lacks the /v1 prefix.
         route_label = request.url.path if request.scope.get("route") else "<unmatched>"
         REQUESTS.labels(route_label, request.method, str(response.status_code)).inc()
+        REQUEST_SECONDS.labels(route_label, request.method).observe(elapsed)
         response.headers[_REQUEST_ID_HEADER] = request_id
         log.info(
             "request",

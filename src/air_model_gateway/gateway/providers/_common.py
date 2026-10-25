@@ -9,12 +9,14 @@ from typing import Any
 
 import httpx
 
-from air_model_gateway.gateway.base import ProviderError, ProviderResult
+from air_model_gateway.constants import Provider
+from air_model_gateway.gateway.base import AUTH_STATUSES, ProviderError, ProviderResult
 from air_model_gateway.schemas.models import Usage
 
 # Statuses where the same request may succeed if asked again later: request
 # timeout, conflict, too early, throttled, and any server-side failure.
 _TRANSIENT_STATUSES = frozenset({408, 409, 425, 429})
+_TOO_MANY_REQUESTS = 429
 
 
 class NeverRaised(Exception):
@@ -28,25 +30,107 @@ class NeverRaised(Exception):
     """
 
 
-def is_transient(exc: BaseException) -> bool:
-    """Whether a provider failure could clear on its own (see ProviderError.retryable).
+# How much of a provider's own error body goes into the detail: enough for its
+# reason, not a whole HTML error page.
+_ERROR_BODY_CHARS = 500
 
-    Reads the HTTP status off whichever shape the SDK raised: ``status_code``
-    (anthropic, openai), ``code`` (google-genai), or an httpx response. With no
-    status at all, only a transport-level failure (connection refused, reset,
-    timed out) counts: an unknown exception is more likely a bug than a blip.
-    """
+
+def http_status(exc: BaseException) -> int | None:
+    """The HTTP status off whichever shape the SDK raised: ``status_code``
+    (anthropic, openai), ``code`` (google-genai), or an httpx response."""
     status = getattr(exc, "status_code", None)
     if not isinstance(status, int):
         status = getattr(exc, "code", None)
     if not isinstance(status, int) and isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
-    if isinstance(status, int):
+    return status if isinstance(status, int) else None
+
+
+def is_transient(exc: BaseException) -> bool:
+    """Whether a provider failure could clear on its own (see ProviderError.retryable).
+
+    With no HTTP status at all, only a transport-level failure (connection
+    refused, reset, timed out) counts: an unknown exception is more likely a
+    bug than a blip.
+    """
+    status = http_status(exc)
+    if status is not None:
         return status in _TRANSIENT_STATUSES or status >= 500
     if isinstance(exc, httpx.TransportError):
         return True
     name = type(exc).__name__
     return "Connection" in name or "Timeout" in name
+
+
+# Auth and account failures that providers report with a status outside
+# AUTH_STATUSES, found by their message (compared lower-cased): Google answers
+# an invalid or expired key with 400 INVALID_ARGUMENT / API_KEY_INVALID,
+# Anthropic an empty account with 400 "credit balance is too low", OpenAI with
+# 429 insufficient_quota. Read as a rejected request or a throttle, each would
+# blame the caller (422) or be retried, while the gateway quietly failed over
+# to a pricier provider on every call.
+_AUTH_MARKERS = (
+    "api_key_invalid",
+    "api key not valid",
+    "api key expired",
+    "credit balance is too low",
+    "insufficient_quota",
+)
+
+
+def is_auth_failure(status: int | None, message: str) -> bool:
+    """Whether the provider refused the gateway's own key or account."""
+    text = message.lower()
+    return status in AUTH_STATUSES or any(marker in text for marker in _AUTH_MARKERS)
+
+
+def provider_error(
+    provider: Provider,
+    exc: BaseException,
+    *,
+    detail: str | None = None,
+    throttled: bool = False,
+) -> ProviderError:
+    """An SDK or HTTP failure as a ProviderError: retryable or not, and the
+    provider's status, read off the exception the same way for every adapter.
+    `throttled` is for an SDK's own rate-limit error class, which says 429
+    even where the exception carries no status."""
+    status = http_status(exc)
+    if throttled and status is None:
+        status = _TOO_MANY_REQUESTS
+    text = detail or str(exc)
+    if is_auth_failure(status, f"{text} {exc}"):
+        return ProviderError(
+            provider,
+            f"credentials or account refused (the gateway's {provider.value} key is "
+            f"invalid, revoked, not permitted or out of credit): {text}",
+            status=status,
+            auth=True,
+        )
+    return ProviderError(
+        provider,
+        text,
+        rate_limited=status == _TOO_MANY_REQUESTS,
+        retryable=is_transient(exc),
+        status=status,
+    )
+
+
+def http_error_detail(exc: httpx.HTTPStatusError) -> str:
+    """`<status> <the server's reason>`, for a backend spoken to over plain
+    HTTP. httpx's own message names only the status and the URL, plus a link to
+    MDN; the reason (Ollama: `{"error": "model 'x' not found"}`) is in the body,
+    which must have been read already (true for a non-streamed response, and
+    after `aread()` for a streamed one)."""
+    resp = exc.response
+    try:
+        body = resp.json()
+        reason = body.get("error") if isinstance(body, dict) else None
+    except ValueError:
+        reason = None
+    if not isinstance(reason, str) or not reason:
+        reason = resp.text.strip() or resp.reason_phrase
+    return f"{resp.status_code} {reason[:_ERROR_BODY_CHARS]}"
 
 
 def int_attr(obj: object, field: str) -> int:

@@ -35,10 +35,13 @@ _PROBLEM_DESCRIPTIONS: dict[int, str] = {
         "sent `pin` without a pin grant (needed outside local). Don't retry."
     ),
     422: (
-        "`code: validation_error`: the body failed validation; `detail` lists each "
-        "`field: message`. `code: invalid_model_choice`: a choice that means nothing here "
-        "(an unpublished embedding model, a provider the class doesn't offer, a malformed "
-        "pin). Don't retry."
+        "`code: validation_error`: the body failed validation (including the size limits); "
+        "`detail` lists each `field: message`. `code: invalid_model_choice`: a choice that "
+        "means nothing here (an unpublished embedding model, a provider the class doesn't "
+        "offer, a malformed pin, a pin to a model with no price or one its provider doesn't "
+        "have). `code: provider_rejected`: every provider refused the request as invalid "
+        "(too long for the model, a parameter it won't take); `detail` has their reasons. "
+        "Don't retry any of these unchanged."
     ),
     429: (
         "`code: rate_limited`: the service's own rate limit, or every rung of the chain was "
@@ -47,8 +50,8 @@ _PROBLEM_DESCRIPTIONS: dict[int, str] = {
         "`Retry-After` (the next UTC day)."
     ),
     502: (
-        "Every rung of the model's chain failed (`code: provider_unavailable`); `detail` "
-        "names each. Retry with backoff."
+        "Every rung of the model's chain failed for a reason other than the request "
+        "(`code: provider_unavailable`); `detail` names each. Retry with backoff."
     ),
     500: "Unexpected error (`code: internal_error`).",
 }
@@ -62,18 +65,21 @@ cost accounting and caching.
 
 **Streaming.** `stream: true` on `/v1/generate` answers with Server-Sent Events:
 `start`, `delta`s, then `done` or `error`. The gateway fails over between models only
-before the first token; errors before then are ordinary HTTP errors.
+before the first token; errors before then are ordinary HTTP errors. If `done` has
+`refusal: true`, discard the deltas (the non-streamed answer's `content` is empty).
 
 **Authentication.** Every `/v1` call except health and readiness carries the calling
-service's token in `X-API-Key`. Each service is granted specific operations
-(`generate`, `embed`); anything else is 403.
+service's token in `X-API-Key`, checked before the body is read (no key is 401 whatever
+the body). Each service is granted specific operations (`generate`, `embed`); anything
+else is 403.
 
 **Stateless.** The gateway keeps no conversation: send the whole history on every
 `/v1/generate` call. Unknown fields are 422.
 
 **Errors.** Every error body is `application/problem+json` (RFC 9457) with a stable
-`code` and the `request_id`. Retry only 429 `rate_limited`, 502 and 503, with backoff;
-never 429 `budget_exceeded`.
+`code` and the `request_id`, an unknown path (`not_found`) or method
+(`method_not_allowed`) included. Retry only 429 `rate_limited`, 502 and 503, with
+backoff; never 429 `budget_exceeded` or any 4xx.
 
 **Tracing.** Send `X-Request-ID` (up to 128 of `A-Z a-z 0-9 . _ : -`) to have it
 logged with the call and echoed back; without one, or with any other value, the

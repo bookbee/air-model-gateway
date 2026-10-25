@@ -14,7 +14,11 @@ name: air-model-gateway-integration
 
 services:
   gateway:
-    build: ../../..
+    build:
+      context: ../../..
+      # The checkout's revision, which the Makefile exports; /v1/health reports it.
+      args:
+        REVISION: ${AIR_MODEL_GATEWAY_REVISION:-unknown}
     image: air-model-gateway:local
     deploy:
       replicas: 2
