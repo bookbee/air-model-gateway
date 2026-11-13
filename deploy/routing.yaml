@@ -39,10 +39,10 @@ generate:
   # environment today; Anthropic and OpenAI are the fallback, not a lesser
   # choice. Revisit the order once all keys are live.
   cloud:
-    - provider: gemini
-      model: gemini-2.5-flash
     - provider: anthropic
       model: claude-haiku-4-5
+    - provider: gemini
+      model: gemini-2.5-flash
     - provider: openai
       model: gpt-4o-mini
 
@@ -50,8 +50,8 @@ generate:
   # the local model is healthy), then cloud as fallback. A caller whose data must
   # not leave the network asks for `local`, not `auto`.
   auto:
-    - provider: ollama
-      model: llama3.2:3b
+    - provider: anthropic
+      model: claude-haiku-4-5
     - provider: gemini
       model: gemini-2.5-flash
     - provider: anthropic
@@ -96,10 +96,10 @@ overrides:
       # Tier 3: the classifier has already decided local (Tier 2) wasn't
       # confident enough, so its `auto` is cloud-only, at the cheap end.
       auto:
-        - provider: gemini
-          model: gemini-2.5-flash
         - provider: anthropic
           model: claude-haiku-4-5
+        - provider: gemini
+          model: gemini-2.5-flash
         - provider: openai
           model: gpt-4o-mini
       # Arbitration, when even Tier 3 isn't confident: the strongest models.
@@ -107,10 +107,10 @@ overrides:
       # Claude rung keeps the class serving, and the GA name replaces it then
       # (with its row in pricing.yaml).
       cloud:
-        - provider: gemini
-          model: gemini-3.1-pro-preview
         - provider: anthropic
           model: claude-sonnet-5
+        - provider: gemini
+          model: gemini-3.1-pro-preview
         - provider: openai
           model: gpt-4o-mini
 
@@ -121,10 +121,10 @@ overrides:
       # 5-8 s a Pro model takes. Sonnet second: a customer answer falling back
       # should not drop to the smallest model.
       cloud:
-        - provider: gemini
-          model: gemini-2.5-flash
         - provider: anthropic
           model: claude-sonnet-5
+        - provider: gemini
+          model: gemini-2.5-flash
         - provider: openai
           model: gpt-4o-mini
 
