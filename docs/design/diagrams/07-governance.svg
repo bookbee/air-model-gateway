@@ -13,7 +13,7 @@
 <text x="36" y="96" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">provider_quotas:       # all services</text>
 <text x="36" y="115" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">  gemini: 600          # calls/minute</text>
 <text x="36" y="134" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">services:</text>
-<text x="36" y="153" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">  air-rag:</text>
+<text x="36" y="153" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">  air-rag-service:</text>
 <text x="36" y="172" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">    resources:</text>
 <text x="36" y="191" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">      inference: [embed]</text>
 <text x="36" y="210" font-size="12" font-family="Menlo, Consolas, monospace" fill="#1F2430" xml:space="preserve">    embed_models: [local-768-v1]</text>
@@ -66,7 +66,7 @@
 <text x="1013.0" y="175" font-size="12" font-weight="normal" fill="#5F6673" text-anchor="middle">—</text>
 <text x="1070.0" y="175" font-size="12" font-weight="normal" fill="#1F2430" text-anchor="middle">300</text>
 <rect x="430" y="190" width="675" height="40" fill="#F7F8FA" stroke="#E3E6EB"/>
-<text x="440" y="215" font-size="12" font-weight="bold" fill="#2F6FDB" text-anchor="start">air-rag</text>
+<text x="440" y="215" font-size="12" font-weight="bold" fill="#2F6FDB" text-anchor="start">air-rag-service</text>
 <text x="646.0" y="215" font-size="12" font-weight="normal" fill="#5F6673" text-anchor="middle">—</text>
 <text x="712.0" y="215" font-size="12" font-weight="normal" fill="#3C8D2F" text-anchor="middle">✓</text>
 <text x="783.0" y="215" font-size="12" font-weight="normal" fill="#5F6673" text-anchor="middle">—</text>

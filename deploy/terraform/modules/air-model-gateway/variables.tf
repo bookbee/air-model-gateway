@@ -75,7 +75,7 @@ variable "consumers" {
     "air-orchestrator-service",
     "air-web-console",
     "air-tools",
-    "air-rag",
+    "air-rag-service",
   ]
 }
 

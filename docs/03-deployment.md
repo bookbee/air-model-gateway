@@ -13,7 +13,8 @@ needs to stand it up and operate it. Every file named here is in this repo.
  │ ns air-classifier-service ─┐                                         │
  │ ns air-orchestrator-service├─► Service air-model-gateway (ClusterIP)  │
  │ ns air-web-console ────────┤      │  NetworkPolicy: these only       │
- │ ns air-tools, air-rag ─────┘      ▼                                  │
+ │ ns air-tools ──────────────┤      ▼                                  │
+ │ ns air-rag-service ────────┘                                         │
  │                    ns air-model-gateway: Deployment, 2–10 pods       │
  │                      (HPA, PDB, zone spread, non-root, RO root FS)   │
  │                      │ SECRETS_DIR ◄── Secret Manager add-on (CSI)   │
@@ -124,9 +125,9 @@ For each consumer:
    `air-platform/model-gateway-client=true`.
 2. Its identity can read its own token secret. Do this in the consumer's Terraform, or:
    ```bash
-   gcloud secrets add-iam-policy-binding air-rag-model-gateway-token --project <p> \
+   gcloud secrets add-iam-policy-binding air-rag-service-model-gateway-token --project <p> \
      --role roles/secretmanager.secretAccessor \
-     --member "principal://iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/<p>.svc.id.goog/subject/ns/air-rag/sa/<ksa>"
+     --member "principal://iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/<p>.svc.id.goog/subject/ns/air-rag-service/sa/<ksa>"
    ```
 3. Its deployment sets the gateway URL and mounts that token, under its own setting
    names (each repo's `.env.example` names them).

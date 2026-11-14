@@ -65,14 +65,14 @@ check("dev token refused", 401, call("/v1/generate", "air-classifier-dev", GENER
 check("classifier: generate", 200, call("/v1/generate", token("air-classifier-service"), GENERATE)[0])
 check("orchestrator: generate", 200, call("/v1/generate", token("air-orchestrator-service"), GENERATE)[0])
 check("tools: generate", 200, call("/v1/generate", token("air-tools"), GENERATE)[0])
-check("rag: embed", 200, call("/v1/embed", token("air-rag"), EMBED)[0])
-check("rag: generate not granted", 403, call("/v1/generate", token("air-rag"), GENERATE)[0])
+check("rag: embed", 200, call("/v1/embed", token("air-rag-service"), EMBED)[0])
+check("rag: generate not granted", 403, call("/v1/generate", token("air-rag-service"), GENERATE)[0])
 pin = {"pin": "ollama:llama3.2:3b", "messages": GENERATE["messages"], "max_tokens": 5}
 check("classifier: pin refused (no grant)", 403, call("/v1/generate", token("air-classifier-service"), pin)[0])
 unpublished = {"model": "local-1024-v1", "input": ["x"]}
 check("classifier: unpublished embedding model", 422, call("/v1/embed", token("air-classifier-service"), unpublished)[0])
 other = {"model": "cloud-1536-v1", "input": ["x"]}
-check("rag: embedding model outside its grant", 403, call("/v1/embed", token("air-rag"), other)[0])
+check("rag: embedding model outside its grant", 403, call("/v1/embed", token("air-rag-service"), other)[0])
 status, body = call("/v1/generate", token("air-tools"), GENERATE)
 check("finish_reason normalized", True, body.get("finish_reason") in {"stop", "length"})
 check("web-console: embed not granted", 403, call("/v1/embed", token("air-web-console"), EMBED)[0])

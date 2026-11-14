@@ -59,7 +59,7 @@ services:
     rate_per_minute: 300
     daily_budget_usd: 25.0
 
-  air-rag:
+  air-rag-service:
     resources:
       inference: [embed]
     # Its index's embedding model, and only that: vectors from any other model

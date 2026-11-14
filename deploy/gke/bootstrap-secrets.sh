@@ -25,7 +25,7 @@ mode=${3:-}
 case "$env" in staging|prod) ;; *) echo "environment must be staging or prod" >&2; exit 2;; esac
 case "$mode" in ""|--rotate|--retire-old) ;; *) echo "unknown option $mode" >&2; exit 2;; esac
 
-services="air-classifier-service air-orchestrator-service air-web-console air-tools air-rag"
+services="air-classifier-service air-orchestrator-service air-web-console air-tools air-rag-service"
 map_secret=air-model-gateway-service-tokens
 
 read_latest() { gcloud secrets versions access latest --project "$project" --secret "$1" 2>/dev/null || true; }

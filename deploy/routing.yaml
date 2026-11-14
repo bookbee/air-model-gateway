@@ -66,7 +66,7 @@ generate:
 # version (v2) and re-index. Exactly one model per name, never a fallback chain,
 # for the same reason: an embedding outage must fail visibly.
 embed:
-  # air-rag's indexing and query embeddings.
+  # air-rag-service's indexing and query embeddings.
   local-768-v1:
     provider: ollama
     model: nomic-embed-text

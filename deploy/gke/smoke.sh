@@ -27,7 +27,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 suffix=$(openssl rand -hex 3)
 allowed="amg-smoke-$suffix"
 denied="amg-smoke-denied-$suffix"
-services="air-classifier-service air-orchestrator-service air-web-console air-tools air-rag"
+services="air-classifier-service air-orchestrator-service air-web-console air-tools air-rag-service"
 k() { kubectl --context "$KUBE_CONTEXT" "$@"; }
 
 tmp=$(mktemp -d)

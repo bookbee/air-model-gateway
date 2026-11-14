@@ -42,15 +42,15 @@ check "dev token refused" 401 "$(call /v1/generate air-classifier-dev "$gen")"
 check "classifier: generate" 200 "$(call /v1/generate "$AIR_CLASSIFIER_SERVICE_TOKEN" "$gen")"
 check "orchestrator: generate" 200 "$(call /v1/generate "$AIR_ORCHESTRATOR_SERVICE_TOKEN" "$gen")"
 check "tools: generate" 200 "$(call /v1/generate "$AIR_TOOLS_TOKEN" "$gen")"
-check "rag: embed" 200 "$(call /v1/embed "$AIR_RAG_TOKEN" "$embed")"
-check "rag: generate not granted" 403 "$(call /v1/generate "$AIR_RAG_TOKEN" "$gen")"
+check "rag: embed" 200 "$(call /v1/embed "$AIR_RAG_SERVICE_TOKEN" "$embed")"
+check "rag: generate not granted" 403 "$(call /v1/generate "$AIR_RAG_SERVICE_TOKEN" "$gen")"
 pin='{"pin":"ollama:llama3.2:3b","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":5}'
 check "classifier: pin refused (no grant)" 403 "$(call /v1/generate "$AIR_CLASSIFIER_SERVICE_TOKEN" "$pin")"
 check "web-console: pin allowed" 200 "$(call /v1/generate "$AIR_WEB_CONSOLE_TOKEN" "$pin")"
 unpublished='{"model":"local-1024-v1","input":["x"]}'
 check "classifier: unpublished embedding model" 422 "$(call /v1/embed "$AIR_CLASSIFIER_SERVICE_TOKEN" "$unpublished")"
 other='{"model":"cloud-1536-v1","input":["x"]}'
-check "rag: embedding model outside its grant" 403 "$(call /v1/embed "$AIR_RAG_TOKEN" "$other")"
+check "rag: embedding model outside its grant" 403 "$(call /v1/embed "$AIR_RAG_SERVICE_TOKEN" "$other")"
 finish=$(curl -s --max-time 90 -X POST "$gw/v1/generate" -H "X-API-Key: $AIR_TOOLS_TOKEN" \
   -H 'Content-Type: application/json' -d "$gen" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("finish_reason"))')
 normalized=$finish

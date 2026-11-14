@@ -41,7 +41,7 @@ the firewall applies to all of them: data leaves for the cloud through every one
    the network, so a rung on a local provider receives the request as sent. A cloud
    rung receives the inspected, masked request. The decision is made per rung because
    a chain can mix both: `auto` starts local and fails over to cloud. This also keeps
-   the expensive inspection off the bulk of local traffic, such as air-rag's
+   the expensive inspection off the bulk of local traffic, such as air-rag-service's
    `local-768-v1` ingestion.
 2. **Fail closed toward the cloud.** If an inspection stage errors or times out, cloud
    rungs are skipped (never sent unmasked) and local rungs still serve. A chain left
@@ -290,7 +290,7 @@ confirm it (§12).
 - **Provider quotas per route:** `provider_quotas` can be split by route, so ingestion
   can't spend the interactive share of a provider account.
 - **Optional, for heavy ingestion:** a second deployment of the same image and chart,
-  exposed as its own Service and used only by air-rag. Kubernetes then isolates CPU,
+  exposed as its own Service and used only by air-rag-service. Kubernetes then isolates CPU,
   memory and autoscaling completely. One values file, no code.
 
 ### 8.2 Embedding cache

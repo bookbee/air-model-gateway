@@ -384,7 +384,7 @@ def test_outside_local_a_grant_of_an_unpublished_embedding_model_stops_startup(
         yaml.safe_dump(
             {
                 "services": {
-                    "air-rag": {
+                    "air-rag-service": {
                         "resources": {"inference": ["embed"]},
                         "embed_models": ["local-1024-v9"],
                     }

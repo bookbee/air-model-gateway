@@ -40,7 +40,7 @@ Rules the routes enforce:
 | air-classifier-service | `classify-arbiter` | `cloud` |
 | air-orchestrator-service | `generative` | `cloud` |
 | air-tools | `agent_reason`, `agent_interpret` | `cloud` |
-| air-rag | `rag-embed` | `local-768-v1` (on `/v1/embed`) |
+| air-rag-service | `rag-embed` | `local-768-v1` (on `/v1/embed`) |
 | air-web-console | any model | `pin: "provider:model"` (granted), or a class |
 
   `GET /v1/capabilities` shows each service the models behind its classes.
@@ -60,7 +60,7 @@ reports MG-001 to MG-008), all additive or tightening:
   clients retried. Don't retry it.
 - **Size limits (422 `validation_error`):** `/v1/generate` takes at most 500 messages
   and 800,000 characters in all; `/v1/embed` at most 2,048 texts of 32,000
-  characters each. air-rag: split larger re-index batches.
+  characters each. air-rag-service: split larger re-index batches.
 - **`pin`** must name a model the gateway prices (or a local one) and its provider
   has; otherwise 422 `invalid_model_choice`, never a $0 call or a 502.
 - **`/v1/capabilities`** adds `available` next to `allowed` on each class and
@@ -124,7 +124,7 @@ the service's own tests, then `make integration-test` in air-model-gateway.
 - **Request id:** forward `X-Request-ID`.
 - **Streaming:** not needed (agents read whole answers).
 
-## air-rag
+## air-rag-service
 
 - **File:** `src/air_rag/clients/llm.py`.
 - **Path:** `_INFERENCE_PATH` → `"/v1/embed"`.
