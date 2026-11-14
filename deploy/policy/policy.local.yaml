@@ -35,7 +35,7 @@ services:
       inference: [generate]  # cloud, for agent steps
     rate_per_minute: 300
 
-  air-rag:
+  air-rag-service:
     resources:
       inference: [embed]  # local-768-v1; no generation use today
     # Ingestion embeds in batches, one call per batch, so this is batches/min.

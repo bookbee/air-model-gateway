@@ -49,9 +49,9 @@ reordering a chain or repricing is a file edit and a restart, never a code relea
 ## 2. Architecture
 
 ```
-  air-orchestrator-service   air-classifier-service   air-tools   air-rag   air-web-console
-              │                         │                 │          │             │
-              └────────────────────┬────┴─────────────────┴──────────┴─────────────┘
+  air-orchestrator-service   air-classifier-service   air-tools   air-rag-service   air-web-console
+              │                         │                 │             │                 │
+              └────────────────────┬────┴─────────────────┴─────────────┴─────────────────┘
                                    │ POST /v1/generate · /v1/embed · X-API-Key
                                    ▼
                  ┌──────────────────────────────────┐        ┌───────────────────────┐
@@ -105,7 +105,7 @@ first token can't fail over: it ends the stream with an `error` event.
 | air-classifier-service | `air-classifier-dev` | generate, embed · 300/min | `local` (Tier 2, summaries), `auto` (Tier 3), `cloud` (arbitration), each tuned for it |
 | air-orchestrator-service | `air-orchestrator-service-dev` | generate, embed · 600/min | `cloud` (customer and business answers), tuned for it |
 | air-tools | `air-tools-dev` | generate · 300/min | `cloud` (agent steps) |
-| air-rag | `air-rag-dev` | embed · 600/min | `local-768-v1` only (its index) |
+| air-rag-service | `air-rag-service-dev` | embed · 600/min | `local-768-v1` only (its index) |
 | air-web-console | `air-client-dev` | generate, admin_read · 60/min | any class, and `pin` for exact models (operator console) |
 
 The classes mean the same for every service unless `deploy/routing.yaml` tunes them
@@ -346,7 +346,7 @@ curl -X POST localhost:8083/v1/generate -H "X-API-Key: air-classifier-dev" \
        "json_schema":{"type":"object","properties":{"label":{"type":"string"}},"required":["label"]}}'
 
 # Embed: one vector per input text
-curl -X POST localhost:8083/v1/embed -H "X-API-Key: air-rag-dev" \
+curl -X POST localhost:8083/v1/embed -H "X-API-Key: air-rag-service-dev" \
   -H "Content-Type: application/json" \
   -d '{"model":"local-768-v1","input":["hello","world"]}'
 

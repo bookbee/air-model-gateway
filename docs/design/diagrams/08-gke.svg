@@ -19,7 +19,7 @@
 <rect x="70" y="243" width="200" height="48" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
 <text x="170.0" y="270.75" font-size="11.5" font-weight="bold" fill="#1F2430" text-anchor="middle">ns air-tools</text>
 <rect x="70" y="307" width="200" height="48" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
-<text x="170.0" y="334.75" font-size="11.5" font-weight="bold" fill="#1F2430" text-anchor="middle">ns air-rag</text>
+<text x="170.0" y="334.75" font-size="11.5" font-weight="bold" fill="#1F2430" text-anchor="middle">ns air-rag-service</text>
 <rect x="70" y="371" width="200" height="48" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
 <text x="170.0" y="398.75" font-size="11.5" font-weight="bold" fill="#1F2430" text-anchor="middle">ns air-web-console</text>
 <rect x="320" y="85" width="495" height="260" rx="10" fill="none" stroke="#0F8C7E" stroke-width="1.3" stroke-dasharray="6 4"/>

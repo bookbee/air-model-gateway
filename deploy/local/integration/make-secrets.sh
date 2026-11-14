@@ -21,7 +21,7 @@ mkdir -p "$secrets"
 
 if [ ! -f "$tokens" ]; then
   : > "$tokens"
-  for service in air-classifier-service air-orchestrator-service air-web-console air-tools air-rag; do
+  for service in air-classifier-service air-orchestrator-service air-web-console air-tools air-rag-service; do
     var=$(echo "$service" | tr 'a-z-' 'A-Z_')_TOKEN
     echo "$var=amg_int_$(openssl rand -hex 20)" >> "$tokens"
   done

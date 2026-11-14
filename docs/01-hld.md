@@ -5,9 +5,9 @@
 ## 1. System context
 
 ```
-  air-orchestrator-service   air-classifier-service   air-tools   air-rag   air-web-console
-              │                         │                 │          │             │
-              └────────────────────┬────┴─────────────────┴──────────┴─────────────┘
+  air-orchestrator-service   air-classifier-service   air-tools   air-rag-service   air-web-console
+              │                         │                 │             │                 │
+              └────────────────────┬────┴─────────────────┴─────────────┴─────────────────┘
                                    │ POST /v1/generate · /v1/embed · X-API-Key
                                    ▼
                  ┌──────────────────────────────────┐

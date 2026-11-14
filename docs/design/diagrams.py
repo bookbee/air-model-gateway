@@ -206,7 +206,7 @@ def context() -> str:
         ("air-classifier-service", "generate local · auto · cloud, embed"),
         ("air-orchestrator-service", "generate cloud (streams), embed"),
         ("air-tools", "generate cloud (agent steps)"),
-        ("air-rag", "embed local-768-v1"),
+        ("air-rag-service", "embed local-768-v1"),
         ("air-web-console", "generate, pin, admin_read"),
     ]
     for i, (name, use) in enumerate(consumers):
@@ -1025,7 +1025,7 @@ def governance() -> str:
         "provider_quotas:       # all services",
         "  gemini: 600          # calls/minute",
         "services:",
-        "  air-rag:",
+        "  air-rag-service:",
         "    resources:",
         "      inference: [embed]",
         "    embed_models: [local-768-v1]",
@@ -1059,7 +1059,7 @@ def governance() -> str:
         "air-classifier-service",
         "air-orchestrator-service",
         "air-tools",
-        "air-rag",
+        "air-rag-service",
         "air-web-console",
     ]
     rows = [
@@ -1130,7 +1130,7 @@ def gke() -> str:
             "air-classifier-service",
             "air-orchestrator-service",
             "air-tools",
-            "air-rag",
+            "air-rag-service",
             "air-web-console",
         ]
     ):

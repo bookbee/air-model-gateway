@@ -208,7 +208,7 @@ that fails if the guard is removed. Read this before "simplifying" any of them.
 | Repo | Item |
 |---|---|
 | air-classifier-service | Forward `X-Request-ID` to the gateway; re-check its T3 budget (8 s) now that Gemini Flash's thinking is off (~1.1 s for a structured `cloud` call, was 7–12 s) |
-| air-tools, air-rag | Forward `X-Request-ID` |
+| air-tools, air-rag-service | Forward `X-Request-ID` |
 | air-web-console | Its local dev token is `air-client-dev`, not its service name. Add a `staging` target pointing at `:9083`, so its `gateway-check` target also runs against the staging config |
 | air-orchestrator-service | A failed model call returns HTTP 200 `degraded` with an empty `degraded` list, and stays ready |
 | All consumers | Move to `POST /v1/generate` / `POST /v1/embed`; handle 429 `budget_exceeded` as "stop until Retry-After", not as a retryable throttle |

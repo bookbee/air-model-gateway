@@ -185,7 +185,7 @@ CONSUMERS: dict[str, dict[str, set[str]]] = {
     "air-classifier-service": {"generate": {"local", "auto", "cloud"}},
     "air-orchestrator-service": {"generate": {"cloud"}},
     "air-tools": {"generate": {"cloud"}},
-    "air-rag": {"embed": {"local-768-v1"}},
+    "air-rag-service": {"embed": {"local-768-v1"}},
     "air-web-console": {"generate": {"auto"}},  # plus `pin` for exact models
 }
 

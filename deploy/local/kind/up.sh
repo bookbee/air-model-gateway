@@ -56,7 +56,7 @@ if [ ! -f "$state/ca.crt" ]; then
 fi
 if [ ! -f "$state/tokens.env" ]; then
   : > "$state/tokens.env"
-  for service in air-classifier-service air-orchestrator-service air-web-console air-tools air-rag; do
+  for service in air-classifier-service air-orchestrator-service air-web-console air-tools air-rag-service; do
     var=$(echo "$service" | tr 'a-z-' 'A-Z_')_TOKEN
     echo "$var=amg_kind_$(openssl rand -hex 20)" >> "$state/tokens.env"
   done
