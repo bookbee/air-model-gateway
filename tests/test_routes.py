@@ -238,6 +238,9 @@ async def test_embed_needs_a_published_embedding_model(body: dict[str, Any], sta
         ({"temperature": 2.5}, "temperature"),
         ({"temperature": -0.1}, "temperature"),
         ({"messages": [{"role": "wizard", "content": "hi"}]}, "messages.0.role"),
+        # MG-013: the Anthropic SDK refuses this client-side, which used to
+        # surface as a retryable 502.
+        ({"max_tokens": 10_000_000}, "max_tokens"),
     ],
 )
 async def test_out_of_contract_generate_fields_are_rejected(
@@ -252,6 +255,38 @@ async def test_out_of_contract_generate_fields_are_rejected(
         r = await client.post("/v1/generate", headers=SENT, json=body)
     assert r.status_code == 422
     assert r.json()["detail"].startswith(f"{field}: ")
+
+
+@pytest.mark.parametrize(
+    ("messages", "detail"),
+    [
+        ([{"role": "system", "content": "be nice"}], "at least one user message"),
+        ([{"role": "user", "content": ""}], "messages.0.content"),
+        ([{"role": "user", "content": "  \n "}], "messages.0.content"),
+        (
+            [{"role": "user", "content": "hi"}, {"role": "assistant", "content": ""}],
+            "messages.1.content",
+        ),
+    ],
+)
+async def test_a_conversation_no_provider_accepts_is_rejected_up_front(
+    messages: list[dict[str, str]], detail: str
+) -> None:
+    """MG-013: these used to cost a provider round trip before a 422, or a
+    retryable 502 when the chain also held an unhealthy rung."""
+    async for client in _client(_FakeRouter()):
+        r = await client.post("/v1/generate", headers=SENT, json={"messages": messages})
+    assert r.status_code == 422
+    assert detail in r.json()["detail"]
+
+
+async def test_an_empty_system_message_is_still_accepted() -> None:
+    body = {"messages": [{"role": "system", "content": ""}, {"role": "user", "content": "hi"}]}
+    router = _FakeRouter(result=ProviderResult(model="llama3.2:3b", content="hello"))
+    async for client in _client(router):
+        r = await client.post("/v1/generate", headers=SENT, json=body)
+    assert r.status_code == 200
+    assert router.calls == 1
 
 
 async def test_a_validation_error_names_the_field_without_echoing_the_body() -> None:

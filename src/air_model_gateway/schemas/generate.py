@@ -29,6 +29,12 @@ PIN_PATTERN = rf"^({'|'.join(re.escape(p.value) for p in Provider)}):.+$"
 #: the chains (Claude); a local model reads far less and truncates.
 MAX_MESSAGES = 500
 MAX_TOTAL_CHARS = 800_000
+#: The largest `max_tokens` any routed model can honour (Claude's and Gemini's
+#: output ceilings are 64k). Above it, the Anthropic SDK refuses the call
+#: client-side ("streaming is required for operations that may take longer
+#: than 10 minutes"), which used to surface as a retryable 502 that could never
+#: succeed (MG-013). A model with a lower ceiling still answers `provider_rejected`.
+MAX_OUTPUT_TOKENS = 64_000
 
 # Shown in docs/openapi.json and the /docs page.
 _EXAMPLES: list[JsonValue] = [
@@ -98,9 +104,10 @@ class GenerateInput(BaseModel):
         # unlimited) and the Anthropic adapter's `or 1024` would read 0 as its
         # default, so a bad value would silently remove the cap instead of failing.
         ge=1,
+        le=MAX_OUTPUT_TOKENS,
         description=(
-            "Output token cap, at least 1. Thinking models (Gemini) spend part of it before "
-            "the visible answer; leave room (300+ for structured output)."
+            f"Output token cap, 1 to {MAX_OUTPUT_TOKENS:,}. Thinking models (Gemini) spend "
+            "part of it before the visible answer; leave room (300+ for structured output)."
         ),
     )
     # Bounded so an out-of-range value is the caller's 422, not a provider 400
@@ -153,6 +160,18 @@ class GenerateInput(BaseModel):
     def _pin_stands_alone(self) -> GenerateInput:
         if self.pin is not None and ("model" in self.model_fields_set or self.provider):
             raise ValueError("pin names the exact model: send it without model or provider")
+        return self
+
+    @model_validator(mode="after")
+    def _is_a_conversation(self) -> GenerateInput:
+        """Shapes no provider accepts, rejected here rather than after a paid
+        round trip, or worse, mixed with an unhealthy rung into a retryable 502
+        (MG-013). An empty *system* message is left alone: adapters drop it."""
+        if not any(m.role == "user" for m in self.messages):
+            raise ValueError("messages need at least one user message")
+        for i, m in enumerate(self.messages):
+            if m.role != "system" and not m.content.strip():
+                raise ValueError(f"messages.{i}.content: a {m.role} message can't be empty")
         return self
 
     @model_validator(mode="after")
