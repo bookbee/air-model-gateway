@@ -189,6 +189,23 @@ that fails if the guard is removed. Read this before "simplifying" any of them.
 
 ## 7. Open items
 
+**Release gate (§2a), open on the current `develop`:**
+
+| Step | Open |
+|---|---|
+| 1 Freeze | No tag. The gate runs on one tagged commit; a later commit other than docs needs a re-run |
+| 2 `make verify` | Passes on a machine with its tools. A laptop without `uv`, `helm`, `shellcheck`, `terraform` and `kubeconform` stops at the lock check: install them first |
+| 3 Runtime gates | `make kind-up kind-test` and `make integration-up integration-test` not run since §5. Both start further stacks, so run them when no other test is using the laptop |
+| 4 Contract, local | air-web-console's `gateway-check` fails two scenarios, `cloud-prefer-anthropic` and `anthropic-temperature`: the Anthropic account has no credit. OpenAI has no key, so `cloud-1536-v1` and the last `cloud` rung are untested |
+| 5 Bugs | Console MG-015 (High) is open until air-rag-service is re-seeded and its `rag-check` passes |
+| 6 Decisions | Below |
+| 7 Evidence | §5 describes `40ee62b`; rewrite it after steps 1 to 5 pass on the tag |
+
+**Known limit of a CPU-only laptop:** a `local` call takes from under a second (warm)
+to 47 s (cold) against the 60 s per-attempt deadline, so `local` scenarios and the
+classifier's Tier 2 can time out under load. This is the environment, not a defect;
+`auto` leads with Gemini for this reason (`deploy/routing.yaml`).
+
 **Consumers to update:** each consumer moves to `POST /v1/generate` and
 `POST /v1/embed`; per-service steps are in
 [06-consumer-migration.md](06-consumer-migration.md).
