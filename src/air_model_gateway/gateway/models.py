@@ -39,10 +39,12 @@ DEFAULT_ROUTING: Final[RoutingDoc] = RoutingDoc.model_validate(
         "generate": {
             "local": [{"provider": "ollama", "model": "llama3.2:3b"}],
             "auto": [
-                {"provider": "ollama", "model": "llama3.2:3b"},
+                {"provider": "gemini", "model": "gemini-2.5-flash"},
                 {"provider": "anthropic", "model": "claude-haiku-4-5"},
+                {"provider": "ollama", "model": "llama3.2:3b"},
             ],
             "cloud": [
+                {"provider": "gemini", "model": "gemini-2.5-flash"},
                 {"provider": "anthropic", "model": "claude-haiku-4-5"},
                 {"provider": "openai", "model": "gpt-4o-mini"},
             ],

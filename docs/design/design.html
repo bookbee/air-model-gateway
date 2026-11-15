@@ -159,7 +159,7 @@
     <li><b>Consumers</b>Five AIR services, each with its own token and grants. They call it directly over HTTP; there is no shared SDK requirement.</li>
     <li><b>One API</b>Two model routes. <code>/v1/capabilities</code> tells a caller what its classes mean; health and readiness serve probes.</li>
     <li><b>Owner-managed config</b>Models, chains, prices and grants are files in <code>deploy/</code>: an edit and a deploy, never a code release.</li>
-    <li><b>Local models</b>Free and private. <code>local</code> never leaves the network; <code>auto</code> tries local first.</li>
+    <li><b>Local models</b>Free and private. <code>local</code> never leaves the network; <code>auto</code> keeps one as its last resort.</li>
     <li><b>Cloud models</b>Billed per token, priced from <code>deploy/pricing.yaml</code>. Cross-vendor chains survive one vendor's outage.</li>
     <li><b>Redis, optional</b>Shares cache, rate limits and spend across replicas. Without it, or when it fails, each replica keeps state in memory.</li>
     <li><b>Observability</b>Prometheus metrics on <code>/metrics</code>; one JSON <code>model.call</code> audit line per served call.</li>
@@ -212,7 +212,7 @@
     <li><b>The request</b><code>model</code> defaults to <code>auto</code>. <code>provider</code> is a preference, not a filter. <code>pin</code> names an exact model and stands alone.</li>
     <li><b>Grant first</b>The policy says which classes, providers, embedding models and pins a service may use; outside the grant is 403.</li>
     <li><b>Catalog</b><code>gateway/models.py</code> turns an allowed choice into a chain. A choice that means nothing (unpublished name, provider not in the class) is 422.</li>
-    <li><b>Classes</b><code>local</code> stays on our servers; <code>cloud</code> uses cloud models only; <code>auto</code> is local first with cloud fallback.</li>
+    <li><b>Classes</b><code>local</code> stays on our servers; <code>cloud</code> uses cloud models only; <code>auto</code> is Gemini first, then the other cloud models, with a local last resort.</li>
     <li><b>Overrides</b>A class can mean something different for one service; tuning one consumer never moves another. <code>/v1/capabilities</code> shows each service its own chains.</li>
     <li><b>Embeddings</b>A name is permanent: one model, fixed dimensions, never a fallback. A new model is a new name (<code>-v2</code>) and a re-index.</li>
     <li><b>Preference</b>Moves the provider's rungs to the front and keeps the rest as fallback. The cache key includes the chain, so a routing change invalidates old answers.</li>

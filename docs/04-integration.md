@@ -55,7 +55,7 @@ Two routes, both `POST` with `X-API-Key: <token>`:
 |---|---|---|
 | `local` | Our own model servers only. The prompt never leaves the network; free | The data must stay in, or a small model is enough |
 | `cloud` | Cloud providers only (Gemini, Anthropic, OpenAI) | You need stronger models |
-| `auto` | The gateway's choice: local first today, cloud as fallback | You have no constraint; let the owner decide |
+| `auto` | The gateway's choice: Gemini first today, then the other cloud models, the local model as last resort | You have no constraint; let the owner decide |
 
 `auto` may send the prompt to a cloud provider: if your data must not leave the
 network, send `local`. Each class is a chain of models with failover; which models,

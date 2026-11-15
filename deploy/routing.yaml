@@ -46,18 +46,24 @@ generate:
     - provider: openai
       model: gpt-4o-mini
 
-  # The gateway's choice, and the default. Local first (free and private while
-  # the local model is healthy), then cloud as fallback. A caller whose data must
-  # not leave the network asks for `local`, not `auto`.
+  # The gateway's choice, and the default: what a caller gets unless it asks
+  # for something else (`local`, `cloud`, a preferred `provider` or a `pin`).
+  # Gemini leads, in the same order as `cloud`, because a small local model on
+  # shared or CPU-only hardware is too slow to be the default: calls queued
+  # behind each other, ran into the per-attempt deadline and opened the
+  # breaker. The local model is the last rung, so `auto` still answers when
+  # every cloud provider is down or its key is refused. This makes the default
+  # class a paid one that sends the prompt to a cloud provider: a caller whose
+  # data must not leave the network asks for `local`, not `auto`.
   auto:
-    - provider: ollama
-      model: llama3.2:3b
     - provider: gemini
       model: gemini-2.5-flash
     - provider: anthropic
       model: claude-haiku-4-5
     - provider: openai
       model: gpt-4o-mini
+    - provider: ollama
+      model: llama3.2:3b
 
 # Embedding models, by permanent name: <local|cloud>-<dimensions>-v<version>.
 # A name never changes meaning once published: vectors from different models

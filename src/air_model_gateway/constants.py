@@ -47,7 +47,7 @@ class ModelClass(StrEnum):
 
     #: Our own model servers only; the prompt never leaves the network.
     LOCAL = "local"
-    #: The gateway's choice (local first today, cloud as fallback). The default.
+    #: The gateway's choice (Gemini first today, the local model as last resort). The default.
     AUTO = "auto"
     #: Cloud providers only.
     CLOUD = "cloud"

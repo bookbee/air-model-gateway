@@ -621,10 +621,10 @@ def model_choice() -> str:
         (
             "auto",
             [
-                ("ollama llama3.2:3b", "local"),
                 ("gemini-2.5-flash", "cloud"),
                 ("claude-haiku-4-5", "cloud"),
                 ("gpt-4o-mini", "cloud"),
+                ("ollama llama3.2:3b", "local"),
             ],
         ),
         (

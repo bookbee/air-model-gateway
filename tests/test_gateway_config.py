@@ -43,6 +43,22 @@ def test_shipped_routing_config_loads() -> None:
     assert "local-768-v1" in catalog.doc.embed
 
 
+@pytest.mark.parametrize(
+    "catalog", [_catalog(), ModelCatalog(DEFAULT_ROUTING)], ids=["shipped", "built-in"]
+)
+def test_gemini_answers_by_default_and_local_is_the_last_resort(catalog: ModelCatalog) -> None:
+    """A caller that names no class, or `cloud`, gets Gemini first. A CPU-only
+    Ollama leading `auto` timed out under load and opened its breaker, so the
+    local model is `auto`'s last rung, not its first. The local-only classes
+    (`local`, the classifier's override) are covered by their own tests."""
+    for service in ("air-orchestrator-service", "air-rag-service", "anyone-else"):
+        auto = catalog.class_chain(service, ModelClass.AUTO)
+        assert auto[0] == (Provider.GEMINI, "gemini-2.5-flash")
+        assert auto[-1] == (Provider.OLLAMA, "llama3.2:3b")
+        assert all(p not in LOCAL_PROVIDERS for p, _ in auto[:-1])
+        assert catalog.class_chain(service, ModelClass.CLOUD)[0][0] is Provider.GEMINI
+
+
 def test_shipped_routing_and_pricing_agree() -> None:
     """Every cloud model a chain can reach must have a price.
 
@@ -60,7 +76,7 @@ def test_shipped_routing_and_pricing_agree() -> None:
 
 
 def test_shipped_routing_turns_thinking_off_on_gemini_flash() -> None:
-    """MG-011: gemini-2.5-flash leads `cloud` and follows Ollama in `auto`; with
+    """MG-011: gemini-2.5-flash leads `cloud` and `auto`; with
     thinking at Gemini's default, capped answers came back cut off."""
     assert _catalog().doc.thinking_budgets(Provider.GEMINI) == {"gemini-2.5-flash": 0}
 

@@ -60,8 +60,8 @@ services:
   # ---- model server (profile: ollama) ---------------------------------------
   # Container option for Ollama, for laptops with no native `ollama serve`.
   #
-  # Version pinned deliberately, not left on a floating tag: the `local` and
-  # `auto` classes lead with llama3.2:3b (deploy/routing.yaml), and a floating tag would move
+  # Version pinned deliberately, not left on a floating tag: the `local` class
+  # leads with llama3.2:3b and `auto` ends on it (deploy/routing.yaml), and a floating tag would move
   # that runtime's behaviour out from under it without a corresponding change here.
   ollama:
     <<: *restart
