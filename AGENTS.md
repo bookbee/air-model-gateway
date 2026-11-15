@@ -123,6 +123,11 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
   and `smoke.sh`, `deploy/gke/bootstrap-secrets.sh`, `smoke.py`, `deploy/local/kind/up.sh`, the
   Terraform `consumers` variable, and `networkPolicy.allowedNamespaces` in the GKE
   values.
+- **Renaming a consumer:** everything above, and its local dev token in `.env.example`
+  if that is renamed too. The consumer sends the old token until its own config
+  changes, so land both together or keep the old token value mapped to the new name:
+  a rename that changed only this side locked air-rag-service out with 401s (console
+  MG-015).
 - **Model, chain or price:** `deploy/routing.yaml` / `pricing.yaml` (read the inline
   rationale first; ordering is usually a decision). A `local` chain may only use local
   providers and a `cloud` chain only cloud ones (enforced at load). Never repoint a

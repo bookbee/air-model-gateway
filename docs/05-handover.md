@@ -207,10 +207,11 @@ that fails if the guard is removed. Read this before "simplifying" any of them.
 
 | Repo | Item |
 |---|---|
-| air-classifier-service | Forward `X-Request-ID` to the gateway; re-check its T3 budget (8 s) now that Gemini Flash's thinking is off (~1.1 s for a structured `cloud` call, was 7–12 s) |
-| air-tools, air-rag-service | Forward `X-Request-ID` |
-| air-web-console | Its local dev token is `air-client-dev`, not its service name. Add a `staging` target pointing at `:9083`, so its `gateway-check` target also runs against the staging config |
-| air-orchestrator-service | A failed model call returns HTTP 200 `degraded` with an empty `degraded` list, and stays ready |
+| air-classifier-service | Forward `X-Request-ID` to the gateway; re-check its T3 budget (8 s) now that Gemini Flash's thinking is off (~1.1 s for a structured `cloud` call, was 7–12 s). Its Tier 2 budget (4 s) assumes a GPU-backed local model: on a CPU-only laptop a `local` call takes from under a second (warm) to 47 s (cold), so Tier 2 times out there and escalates |
+| air-rag-service | Its `.env.example` still sends the old dev token `air-rag-dev` (401 since the consumer rename); the gateway maps `air-rag-service-dev`. Its compose file already sends the new one. Forward `X-Request-ID` |
+| air-tools | Forward `X-Request-ID` |
+| air-web-console | Its local dev token is `air-client-dev`, not its service name. Add a `staging` target pointing at `:9083`, so its `gateway-check` target also runs against the staging config. Its `cloud-prefer-anthropic` and `anthropic-temperature` scenarios need an Anthropic account with credit |
+| air-orchestrator-service | A failed model call returns HTTP 200 `degraded` with an empty `degraded` list, and stays ready. A call that names no class now goes to Gemini first (paid, leaves the network): ask for `local` where the data must stay in |
 | All consumers | Move to `POST /v1/generate` / `POST /v1/embed`; handle 429 `budget_exceeded` as "stop until Retry-After", not as a retryable throttle |
 
 **Gateway future work:** `00-plan.md` §6 (first: stand up GCP staging; a per-request

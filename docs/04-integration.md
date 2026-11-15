@@ -30,7 +30,7 @@ choice and can change them without touching your code (§3, "Choosing a model").
 
 | Environment | Base URL | Token |
 |---|---|---|
-| Laptop (`make run` / `make up`) | `http://localhost:8083` (`host.docker.internal:8083` from containers) | `<service>-dev`, from `.env.example` |
+| Laptop (`make run` / `make up`) | `http://localhost:8083` (`host.docker.internal:8083` from containers) | The token mapped to your service in `.env.example` (`AIR_MODEL_GATEWAY_SECURITY__SERVICE_TOKENS`); usually `<service>-dev`, but check, e.g. `air-classifier-dev`, `air-client-dev` |
 | Laptop integration stack (`make integration-up`) | `http://localhost:9083` | `deploy/local/integration/tokens.env` |
 | GKE staging / prod | `http://air-model-gateway.air-model-gateway.svc.cluster.local` | Your `<service>-model-gateway-token` secret in Secret Manager |
 
