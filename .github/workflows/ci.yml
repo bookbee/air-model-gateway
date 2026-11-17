@@ -41,21 +41,6 @@ jobs:
       - run: make lint-scripts
       - run: docker build --build-arg REVISION=${{ github.sha }} -t air-model-gateway:ci .
 
-  deploy-config:
-    # Chart lint, schema validation of every environment's manifests, and
-    # Terraform validation.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-        with:
-          version: v4.3.1
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7
-          terraform_wrapper: false
-      - name: Install kubeconform
-        run: |
-          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
-            | tar -xz -C /usr/local/bin kubeconform
-      - run: make gke-validate
+  # The chart and Terraform that deploy this service are validated in
+  # air-infrastructure-service's own CI (its `make gke-validate`), against this
+  # repository's routing, pricing and policy files.

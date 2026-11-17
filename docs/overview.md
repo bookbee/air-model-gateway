@@ -11,7 +11,7 @@ companion_docs: [00-plan.md, 01-hld.md, 02-lld.md, 03-deployment.md, 04-integrat
 The one-stop guide for engineers adopting or working on the gateway: what it is, how a
 request flows, what every file and folder is for, and how to run, test and operate it.
 The design documents go deeper: [scope and decisions](00-plan.md), [high-level
-design](01-hld.md), [low-level design](02-lld.md), [GKE deployment runbook](03-deployment.md).
+design](01-hld.md), [low-level design](02-lld.md), [deployment and operations](03-deployment.md).
 Teams calling the gateway start with the [integration guide](04-integration.md) and the
 [OpenAPI contract](openapi.json).
 
@@ -138,10 +138,10 @@ air-model-gateway/
 ├── .env.example                  Every setting, documented; copy to .env
 ├── .gitignore
 ├── .github/workflows/
-│   ├── ci.yml                    make check, make gke-validate, image build on every push/PR
-│   └── deploy.yml                Build → staging (deploy + smoke) → promote digest → prod
+│   ├── ci.yml                    make check, script and image lint, image build on every push/PR
+│   └── deploy.yml                Build → UAT (deploy + smoke) → promote digest → prod
 │
-├── deploy/                       DevOps-owned configuration (edit + restart, no release)
+├── deploy/                       The gateway's configuration (edit + restart, no release)
 │   ├── routing.yaml              What each class (local, auto, cloud) and embedding model
 │   │                             means: ordered chains, per-service overrides,
 │   │                             per-model settings (Gemini thinking budget)
@@ -151,23 +151,9 @@ air-model-gateway/
 │   │   ├── policy.staging.yaml   The same, with explicit grants only (fail-closed)
 │   │   └── policy.prod.yaml      Production grants (same as staging)
 │   │
-│   │  ── what gets deployed (DevOps-owned) ──
-│   ├── helm/air-model-gateway/   The Helm chart (one chart, every Kubernetes environment)
-│   │   ├── values.yaml           Production-safe defaults, every knob commented
-│   │   └── templates/            Deployment, Service, ServiceAccount, ConfigMap (routing,
-│   │                             pricing, policy), SecretProviderClass (Secret Manager),
-│   │                             HPA, PDB, NetworkPolicy, PodMonitoring, `helm test` pod
-│   ├── gke/                      The real environments: per-environment values and scripts
-│   │   ├── values-staging.yaml   Staging on GKE (fill the <placeholders> from Terraform)
-│   │   ├── values-prod.yaml      Production on GKE
-│   │   ├── bootstrap-secrets.sh  Issues consumer tokens into Secret Manager; rotation
-│   │   └── smoke.sh, smoke.py    Authenticated in-cluster smoke test + NetworkPolicy check
-│   ├── terraform/                GCP resources
-│   │   ├── modules/air-model-gateway/  Memorystore, Secret Manager secrets, Workload
-│   │   │                               Identity IAM: what the gateway owns
-│   │   ├── modules/gke-platform/       VPC, Cloud NAT, Autopilot cluster, Artifact
-│   │   │                               Registry: only for a project with no platform yet
-│   │   └── environments/{staging,prod}/  One root per environment (GCS state)
+│   │  (the Helm chart, per-environment values, Terraform, the bootstrap and smoke
+│   │   scripts and the kind harness are in the air-infrastructure-service
+│   │   repository, under gke/: see 03-deployment.md)
 │   │
 │   │  ── laptop test harnesses (never deployed) ──
 │   └── local/
@@ -177,11 +163,6 @@ air-model-gateway/
 │       │   ├── nginx.conf        Round-robin load balancer; X-Served-By shows the replica
 │       │   ├── make-secrets.sh   Generates tokens + SECRETS_DIR files (gitignored)
 │       │   └── smoke.sh          Smoke test: gateway, then any running consumers
-│       ├── kind/                 The production Helm chart on a kind cluster (`make kind-*`)
-│       │   ├── cluster.yaml      1 control plane + 2 workers in two "zones"
-│       │   ├── redis-tls.yaml    TLS + AUTH Redis standing in for Memorystore
-│       │   ├── values-kind.yaml  Production values minus what kind can't provide
-│       │   └── up.sh             Build, load, secrets, helm install
 │       └── prometheus/
 │           └── prometheus.yml    Local Prometheus scrape config (`make up-observability`)
 │
@@ -190,7 +171,7 @@ air-model-gateway/
 │   ├── 00-plan.md                Scope: goals, non-goals, key decisions, delivery status
 │   ├── 01-hld.md                 High-level design: components, flows, failure behaviour
 │   ├── 02-lld.md                 Low-level design: settings, contracts, module internals
-│   ├── 03-deployment.md          GKE runbook: provisioning, deploy, rotate, operate
+│   ├── 03-deployment.md          Where the deployment code lives; deploying; operating
 │   ├── 04-integration.md         For consuming teams: access, calls, errors, retries
 │   ├── 05-handover.md            Assurance: gates, traceability, findings, open items
 │   ├── 06-consumer-migration.md  Per-service steps to the new routes and streaming
@@ -362,8 +343,8 @@ curl -s localhost:8083/metrics | grep ^air_model_gateway   # cost, tokens, break
 | Real process, no providers | the smoke run below | nothing |
 | Live | `make run`, then the calls above | Ollama and/or cloud keys |
 | Integration with consumers | `make integration-up`, `make integration-test` (§7) | Docker, Redis |
-| Production packaging | `make gke-validate` (chart lint, schemas, Terraform) | helm, kubeconform, terraform |
-| Production chart, running | `make kind-up`, `make kind-test` (§7) | Docker, kind, helm |
+| Production packaging | `make deploy-validate` (chart lint, schemas, Terraform; runs in air-infrastructure-service) | helm, kubeconform, terraform, the sibling checkout |
+| Production chart, running | `make kind-up`, `make kind-test` (§7) | Docker, kind, helm, the sibling checkout |
 
 Every unit test runs without network access. Providers are faked at the SDK boundary,
 and Redis is faked with `fakeredis`, which runs the real Lua rate-limit script.
@@ -459,17 +440,18 @@ set -a; . ../air-model-gateway/deploy/local/integration/tokens.env; set +a
 
 The production target is GKE, inside the cluster only: consumers in the same cluster
 call `http://air-model-gateway.air-model-gateway.svc.cluster.local` with their token.
-There is no Ingress, and a NetworkPolicy admits only the consumer namespaces. The full
-runbook is [03-deployment.md](03-deployment.md); in short:
+There is no Ingress, and a NetworkPolicy admits only the consumer namespaces. The chart,
+values and Terraform are kept in the air-infrastructure-service repository (`gke/`) with
+the other services'; [03-deployment.md](03-deployment.md) says what lives where. In short:
 
 | Piece | Where | What it provides |
 |---|---|---|
-| Helm chart | `deploy/helm/air-model-gateway` | Hardened Deployment (non-root, read-only root FS, drain on shutdown), HPA, PDB, zone spread, NetworkPolicy, Managed Prometheus scrape |
-| Values | `deploy/gke/values-{staging,prod}.yaml` | Per-environment image, model-server URLs, Redis TLS, Secret Manager project, consumer namespaces |
+| Helm chart | air-infrastructure-service `gke/helm/air-model-gateway` | Hardened Deployment (non-root, read-only root FS, drain on shutdown), HPA, PDB, zone spread, NetworkPolicy, Managed Prometheus scrape |
+| Values | air-infrastructure-service `gke/values/{uat,prod}/air-model-gateway.yaml` | Per-environment image, model-server URLs, Redis TLS, Secret Manager project, consumer namespaces |
 | Config | `deploy/routing.yaml`, `pricing.yaml`, `policy/policy.<env>.yaml` | Passed with `--set-file` into a ConfigMap; a change rolls the pods |
 | Secrets | Secret Manager → GKE add-on (CSI) → `SECRETS_DIR` | Tokens, provider keys, Redis URL and CA; no keys in Kubernetes or GitHub |
-| GCP | `deploy/terraform` | Memorystore (AUTH + TLS), secrets + IAM via Workload Identity, optional VPC/Autopilot/Artifact Registry |
-| CI/CD | `.github/workflows/deploy.yml` | One build, staging deploy + smoke, the same digest promoted to prod after approval |
+| GCP | air-infrastructure-service `gke/terraform` | Memorystore (AUTH + TLS), secrets + IAM via Workload Identity, optional VPC/Autopilot/Artifact Registry |
+| CI/CD | `.github/workflows/deploy.yml` | One build, UAT deploy + smoke, the same digest promoted to prod after approval |
 
 Ollama and the self-hosted slot are separate model-server deployments; the gateway only
 gets their in-cluster URLs.
@@ -497,8 +479,8 @@ consumer namespaces can't connect. `make kind-down` removes the cluster.
 - **Untested live:** the OpenAI provider (no key yet) and vLLM/TGI on real GPU hosts.
 - **No per-request deadline.** Each attempt has its own deadline; a caller bounds the
   whole call with its own client timeout (future work in `00-plan.md` §6).
-- **Next step:** provision staging on GCP by following [03-deployment.md](03-deployment.md):
-  Terraform, then `bootstrap-secrets.sh`, then the Deploy workflow. The chart, values,
+- **Next step:** provision UAT on GCP by following air-infrastructure-service's
+  `docs/03-gke-runbook.md`: Terraform, then the bootstrap script, then the Deploy workflow. The chart, values,
   secrets layout and smoke test have run on kind; what hasn't run yet is anything that
   needs a real GCP project (Terraform apply, the Secret Manager add-on, Memorystore's
   CA, Managed Prometheus, Workload Identity Federation for CI).

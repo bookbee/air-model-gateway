@@ -7,7 +7,7 @@
 </defs>
 <rect width="1160" height="690" fill="#FFFFFF"/>
 <rect x="15" y="15" width="1130" height="660" rx="10" fill="none" stroke="#4F46E5" stroke-width="1.3" stroke-dasharray="6 4"/>
-<text x="43" y="33" font-size="12" font-weight="bold" fill="#4F46E5" text-anchor="start">GCP project  (one per environment: staging, prod)</text>
+<text x="43" y="33" font-size="12" font-weight="bold" fill="#4F46E5" text-anchor="start">GCP project  (one per environment: UAT, prod)</text>
 <rect x="35" y="50" width="800" height="420" rx="10" fill="none" stroke="#4F46E5" stroke-width="1.3" stroke-dasharray="6 4"/>
 <text x="63" y="68" font-size="12" font-weight="bold" fill="#4F46E5" text-anchor="start">GKE Autopilot cluster  (private nodes)</text>
 <rect x="55" y="85" width="230" height="365" rx="10" fill="none" stroke="#2F6FDB" stroke-width="1.3" stroke-dasharray="6 4"/>
@@ -32,7 +32,7 @@
 <text x="350" y="220.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">consumer ns only</text>
 <rect x="510" y="115" width="285" height="124" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
 <text x="520" y="135" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Deployment</text>
-<text x="520" y="150.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">prod 3–10 pods (HPA) · staging 2–4</text>
+<text x="520" y="150.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">prod 3–10 pods (HPA) · UAT 2–4</text>
 <text x="520" y="162.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">PDB · spread over zones and nodes</text>
 <text x="520" y="173.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">non-root · read-only root FS</text>
 <text x="520" y="185.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">drains in-flight calls on SIGTERM</text>
@@ -87,10 +87,10 @@
 <rect x="305" y="490" width="250" height="56" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
 <text x="315" y="510" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Managed Prometheus</text>
 <text x="315" y="525.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">via PodMonitoring; alerts</text>
-<text x="575" y="507" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">Terraform (deploy/terraform) creates Memorystore, the secrets</text>
+<text x="575" y="507" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">Terraform (infra repo gke/terraform) creates Memorystore, the secrets</text>
 <text x="575" y="523" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">and their IAM, Workload Identity bindings; optionally the VPC,</text>
 <text x="575" y="539" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">Cloud NAT, Autopilot cluster and Artifact Registry.</text>
-<text x="35" y="585" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">Helm (deploy/helm + deploy/gke/values-&lt;env&gt;.yaml) creates everything inside ns air-model-gateway.</text>
+<text x="35" y="585" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">Helm (infra repo gke/helm + gke/values/&lt;env&gt;) creates everything inside ns air-model-gateway.</text>
 <text x="35" y="615" font-size="12.5" font-weight="bold" fill="#1F2430" text-anchor="start">Consumers call http://air-model-gateway.air-model-gateway.svc.cluster.local  (no Ingress, no public endpoint)</text>
 <circle cx="66" cy="85" r="11" fill="#1F2430"/>
 <text x="66" y="89.2" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">1</text>

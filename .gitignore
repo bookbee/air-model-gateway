@@ -1,7 +1,7 @@
 # What stays on a laptop and never enters the repository. Grouped by why it is
 # local: secrets first (a leak there is the costly mistake), then generated
-# state, then per-developer tooling. Lock files (uv.lock, requirements*.lock,
-# .terraform.lock.hcl) and docs/openapi.json are committed on purpose.
+# state, then per-developer tooling. Lock files (uv.lock, requirements*.lock)
+# and docs/openapi.json are committed on purpose.
 
 # ---- secrets and real configuration values ---------------------------------
 # .env holds provider keys and service tokens; .env.example documents every key.
@@ -9,21 +9,9 @@
 .env.*
 !.env.example
 .envrc
-# Local harnesses: generated tokens, secret files, CA and Redis password for kind.
+# Local harness: generated tokens and secret files for the integration stack.
 deploy/local/integration/secrets/
 deploy/local/integration/tokens.env
-deploy/local/kind/.state/
-# Terraform: real variable values (the *.tfvars.example files are committed),
-# state, saved plans and local overrides.
-deploy/terraform/**/*.tfvars
-deploy/terraform/**/*.tfvars.json
-!deploy/terraform/**/*.tfvars.example
-deploy/terraform/**/*.tfstate
-deploy/terraform/**/*.tfstate.*
-deploy/terraform/**/*.tfplan
-deploy/terraform/**/override.tf
-deploy/terraform/**/*_override.tf
-deploy/terraform/**/crash*.log
 # Key material, wherever a tool happens to write it.
 *.pem
 *.key
@@ -43,11 +31,8 @@ dist/
 .cache/
 coverage.xml
 htmlcov/
-# Terraform provider cache
-deploy/terraform/**/.terraform/
 # Helm: packaged charts and downloaded dependencies
 *.tgz
-deploy/helm/**/charts/
 # Logs and Redis dumps from local runs
 *.log
 *.rdb

@@ -373,7 +373,7 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
     <li><b>Config</b>Routing, pricing and policy passed with <code>--set-file</code>; a change rolls the pods without a new image.</li>
     <li><b>Secrets</b>Secret Manager mounted by the GKE add-on (CSI) as files in <code>SECRETS_DIR</code>; nothing secret in Kubernetes or GitHub.</li>
     <li><b>Model servers</b>Run in their own namespace, owned separately; the gateway only gets their URLs from values.</li>
-    <li><b>Secret Manager</b>Consumer tokens, provider keys, Redis URL and CA. <code>deploy/gke/bootstrap-secrets.sh</code> loads and rotates them.</li>
+    <li><b>Secret Manager</b>Consumer tokens, provider keys, Redis URL and CA. The infra repository's <code>gke/scripts/bootstrap-gateway-secrets.sh</code> loads and rotates them.</li>
     <li><b>Memorystore</b>Shared cache, rate limits and spend across pods, with AUTH and TLS on a private IP.</li>
   </ol>
   <footer><span>AIR Model Gateway · Visual Design</span><span>10</span></footer>
@@ -385,8 +385,8 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
   <figure><img src="diagrams/09-delivery.svg" alt="Delivery pipeline"></figure>
   <ol class="notes three">
     <li><b>CI = make verify</b>The same gates run on a laptop and in CI, so a green laptop predicts a green build.</li>
-    <li><b>Build once</b>One image per release, pushed to staging's registry and tested there.</li>
-    <li><b>Human approval</b>The <code>prod</code> GitHub environment requires a reviewer; promotion copies the exact digest staging tested.</li>
+    <li><b>Build once</b>One image per release, pushed to UAT's registry and tested there.</li>
+    <li><b>Human approval</b>The <code>prod</code> GitHub environment requires a reviewer; promotion copies the exact digest UAT tested.</li>
     <li><b>Terraform</b>Memorystore, secrets and IAM, Workload Identity; optionally the VPC, NAT, Autopilot cluster and registry.</li>
     <li><b>Tokens</b>One per consumer, issued into Secret Manager. Rotation is two-phase (<code>--rotate</code>, then <code>--retire-old</code>) with no downtime.</li>
   </ol>
@@ -402,7 +402,7 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
     dependency audit, shellcheck, hadolint, chart and Terraform validation. Exactly what CI runs.</p></div>
     <div><h3>Runtime gates</h3><p><code>integration-test</code> and <code>kind-test</code> make real calls per grant:
     401 for an unknown token, 200/403 per grant, pins, embedding names, streaming, readiness, Redis, and (kind) the
-    NetworkPolicy block. <code>gke-smoke</code> runs the same checks inside GKE after each deploy.</p></div>
+    NetworkPolicy block. <code>deploy-smoke</code> runs the same checks inside GKE after each deploy.</p></div>
     <div><h3>Settings</h3><p>Prefix <code>AIR_MODEL_GATEWAY_</code>, <code>__</code> for nesting
     (<code>AIR_MODEL_GATEWAY_OLLAMA__BASE_URL</code>). Env beats <code>SECRETS_DIR</code> files beats <code>.env</code>.
     <code>.env.example</code> documents every key.</p></div>
@@ -502,8 +502,8 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
 ├─ tests/              one file per concern
 ├─ deploy/
 │  ├─ routing.yaml  pricing.yaml  policy/
-│  ├─ helm/  gke/  terraform/
-│  └─ local/  integration, kind, prometheus
+│  └─ local/  integration, prometheus
+│  (chart, values, Terraform: infra repo gke/)
 ├─ docs/               PDF, guides, contract
 └─ Makefile  Dockerfile  docker-compose.yml</pre>
     </div>
@@ -515,8 +515,8 @@ data: {"id":"…","usage":{…},"cost_usd":0.0,"finish_reason":"stop",…}</pre>
         <tr><td>A price</td><td><code>deploy/pricing.yaml</code> · edit, deploy</td></tr>
         <tr><td>A grant, rate, budget, quota</td><td><code>deploy/policy/policy.&lt;env&gt;.yaml</code> · edit, deploy</td></tr>
         <tr><td>A new embedding model</td><td>New name in <code>routing.yaml</code>; consumers re-index</td></tr>
-        <tr><td>Infrastructure</td><td><code>deploy/terraform</code> · plan, apply</td></tr>
-        <tr><td>Chart or values</td><td><code>deploy/helm</code>, <code>deploy/gke</code> · <code>make gke-validate kind-up kind-test</code></td></tr>
+        <tr><td>Infrastructure</td><td>air-infrastructure-service <code>gke/terraform</code> · plan, apply</td></tr>
+        <tr><td>Chart or values</td><td>air-infrastructure-service <code>gke/helm</code>, <code>gke/values</code> · <code>make deploy-validate kind-up kind-test</code></td></tr>
         <tr><td>Wire contract</td><td><code>schemas/</code> · <code>make openapi</code>, client, integration guide</td></tr>
         <tr><td>A provider</td><td>Adapter, <code>Provider</code> member, wiring, prices, tests</td></tr>
         <tr><td>A dependency</td><td><code>pyproject.toml</code> · <code>make lock verify</code></td></tr>

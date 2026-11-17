@@ -42,7 +42,7 @@
 <text x="608" y="289" font-size="12.5" font-weight="bold" font-family="Menlo, Consolas, monospace" fill="#1F2430">make kind-test</text>
 <polyline points="566,170 582,170" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
 <rect x="866" y="20" width="262" height="300" rx="9" fill="#FDEFE2" stroke="#D9822B" stroke-width="1.4"/>
-<text x="880" y="46" font-size="15" font-weight="bold" fill="#1F2430" text-anchor="start">GKE staging · prod</text>
+<text x="880" y="46" font-size="15" font-weight="bold" fill="#1F2430" text-anchor="start">GKE UAT · prod</text>
 <text x="880" y="68" font-size="12" font-family="Menlo, Consolas, monospace" fill="#D9822B">Deploy workflow</text>
 <text x="880" y="100" font-size="12" font-weight="normal" fill="#1F2430" text-anchor="start">· ENVIRONMENT=staging | prod</text>
 <text x="880" y="124" font-size="12" font-weight="normal" fill="#1F2430" text-anchor="start">· policy.&lt;env&gt;.yaml</text>
@@ -51,7 +51,7 @@
 <text x="880" y="196" font-size="12" font-weight="normal" fill="#1F2430" text-anchor="start">· same image digest in both</text>
 <rect x="880" y="250" width="234" height="50" rx="7" fill="#FFFFFF" stroke="#D9822B"/>
 <text x="890" y="270" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">Gate</text>
-<text x="890" y="289" font-size="12.5" font-weight="bold" font-family="Menlo, Consolas, monospace" fill="#1F2430">make gke-smoke</text>
+<text x="890" y="289" font-size="12.5" font-weight="bold" font-family="Menlo, Consolas, monospace" fill="#1F2430">make deploy-smoke</text>
 <polyline points="848,170 864,170" fill="none" stroke="#5F6673" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
 <text x="20" y="350" font-size="12" font-weight="normal" fill="#1F2430" text-anchor="start">Definition of done: make verify (what CI runs). A change to runtime behaviour, deployment or a consumer-visible contract</text>
 <text x="20" y="368" font-size="12" font-weight="normal" fill="#1F2430" text-anchor="start">also passes make kind-up kind-test and make integration-up integration-test.</text>

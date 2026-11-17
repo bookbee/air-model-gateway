@@ -14,7 +14,7 @@ The gateway team adds a new consumer; ask for:
 
 | You provide | The gateway team changes |
 |---|---|
-| Service name (= your repo name) | Token issued per environment (`bootstrap-secrets.sh`, `make-secrets.sh`) |
+| Service name (= your repo name) | Token issued per environment (`bootstrap-gateway-secrets.sh` in air-infrastructure-service, `make-secrets.sh` here) |
 | Operations: `generate`, `embed` | A grant in `policy.local.yaml`, `policy.staging.yaml`, `policy.prod.yaml` |
 | Expected calls per minute | `rate_per_minute` in those files |
 | Which model choices you need (classes; embedding model) and any special needs (latency, quality, no fallback) | Grants in the policy files; if needed, your own tuning of what a class means (`overrides` in `deploy/routing.yaml`); pinned by `tests/test_gateway_config.py` |

@@ -17,17 +17,17 @@
 <text x="400" y="87.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">docker build</text>
 <rect x="760" y="40" width="345" height="66" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
 <text x="770" y="60" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">deploy-config</text>
-<text x="770" y="75.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">helm lint · kubeconform</text>
-<text x="770" y="87.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">terraform validate (make gke-validate)</text>
+<text x="770" y="75.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">helm lint · kubeconform · terraform</text>
+<text x="770" y="87.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">in the infra repo (gke-validate)</text>
 <text x="20" y="150" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">Tag v* (or manual): .github/workflows/deploy.yml</text>
 <rect x="20" y="166" width="196" height="66" rx="7" fill="#EEF1FE" stroke="#4F46E5" stroke-width="1.4"/>
 <text x="30" y="186" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Build once</text>
-<text x="30" y="201.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">push image to staging</text>
+<text x="30" y="201.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">push image to UAT</text>
 <text x="30" y="213.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">Artifact Registry</text>
 <rect x="242" y="166" width="196" height="66" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
-<text x="252" y="186" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Staging</text>
-<text x="252" y="201.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">helm upgrade (gke-deploy)</text>
-<text x="252" y="213.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">then gke-smoke</text>
+<text x="252" y="186" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">UAT</text>
+<text x="252" y="201.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">helm upgrade (make deploy)</text>
+<text x="252" y="213.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">then deploy-smoke</text>
 <polyline points="216,199 242,199" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
 <rect x="464" y="166" width="196" height="66" rx="7" fill="#FFF6D9" stroke="#A87F00" stroke-width="1.4"/>
 <text x="474" y="186" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Approval</text>
@@ -42,28 +42,28 @@
 <rect x="908" y="166" width="196" height="66" rx="7" fill="#E3F5F2" stroke="#0F8C7E" stroke-width="1.4"/>
 <text x="918" y="186" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Prod</text>
 <text x="918" y="201.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">helm upgrade</text>
-<text x="918" y="213.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">then gke-smoke</text>
+<text x="918" y="213.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">then deploy-smoke</text>
 <polyline points="882,199 908,199" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
 <text x="20" y="260" font-size="11.5" font-weight="normal" fill="#5F6673" text-anchor="start">CI authenticates with Workload Identity Federation: no keys are stored in GitHub.</text>
 <text x="20" y="300" font-size="14" font-weight="bold" fill="#1F2430" text-anchor="start">Once per environment (DevOps)</text>
 <rect x="20" y="316" width="256" height="66" rx="7" fill="#EEF1FE" stroke="#4F46E5" stroke-width="1.4"/>
 <text x="30" y="336" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">terraform apply</text>
-<text x="30" y="351.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">deploy/terraform/environments/&lt;env&gt;</text>
-<text x="30" y="363.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">modules: air-model-gateway, gke-platform</text>
+<text x="30" y="351.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">infra repo: gke/terraform/environments/&lt;env&gt;</text>
+<text x="30" y="363.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">modules: gateway, air-service, gke-platform</text>
 <rect x="298" y="316" width="256" height="66" rx="7" fill="#FCE8EC" stroke="#C23B57" stroke-width="1.4"/>
-<text x="308" y="336" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">bootstrap-secrets.sh</text>
+<text x="308" y="336" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">bootstrap-gateway-secrets.sh</text>
 <text x="308" y="351.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">issue consumer tokens, load provider</text>
 <text x="308" y="363.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">keys; --rotate / --retire-old</text>
 <polyline points="276,349 298,349" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
 <rect x="576" y="316" width="256" height="66" rx="7" fill="#F2F3F5" stroke="#5F6673" stroke-width="1.4"/>
-<text x="586" y="336" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">values-&lt;env&gt;.yaml</text>
+<text x="586" y="336" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">gke/values/&lt;env&gt;/</text>
 <text x="586" y="351.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">fill placeholders: project, model-server</text>
 <text x="586" y="363.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">URLs, consumer namespaces</text>
 <polyline points="554,349 576,349" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
 <rect x="854" y="316" width="256" height="66" rx="7" fill="#E8F1FD" stroke="#2F6FDB" stroke-width="1.4"/>
 <text x="864" y="336" font-size="13" font-weight="bold" fill="#1F2430" text-anchor="start">Each consumer</text>
 <text x="864" y="351.5" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">mounts its token, sets the gateway URL</text>
-<text x="864" y="363.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">(03-deployment.md §4.4)</text>
+<text x="864" y="363.0" font-size="10.5" font-weight="normal" fill="#5F6673" text-anchor="start">(infra runbook §5)</text>
 <polyline points="832,349 854,349" fill="none" stroke="#1F2430" stroke-width="1.5" marker-end="url(#arrow-ink)"/>
 <text x="20" y="420" font-size="12" font-weight="normal" fill="#1F2430" text-anchor="start">Config change (routing, pricing, policy): edit the file, merge, deploy. The ConfigMap changes, the pods roll; no new image.</text>
 <circle cx="15" cy="40" r="11" fill="#1F2430"/>

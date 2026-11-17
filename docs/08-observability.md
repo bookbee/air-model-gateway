@@ -198,7 +198,7 @@ OpenTelemetry, exported over OTLP to Cloud Trace (decision 4).
 ## 9. Synthetic probes
 
 The Service has no ingress, so the probe runs in the cluster: a Kubernetes `CronJob`
-in the chart, every 5 minutes, running `deploy/gke/smoke.py` (or a slimmer probe) with
+in the chart, every 5 minutes, running air-infrastructure-service's `gke/scripts/smoke_gateway.py` (or a slimmer probe) with
 a dedicated `gateway-probe` service token (decision 7).
 
 - It checks `/v1/ready`, one `local`-class `/v1/generate` (free) and one local

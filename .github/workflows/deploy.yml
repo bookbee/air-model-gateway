@@ -1,6 +1,10 @@
-# Build once, deploy to staging, promote the same digest to production.
+# Build once, deploy to UAT, promote the same digest to production.
 #
-# Needs, per GitHub environment (`staging`, `prod`), these variables:
+# The image is built here. The Helm chart and the deploy scripts live in
+# air-infrastructure-service, which this workflow checks out beside this
+# repository; `make deploy` and `make deploy-smoke` hand over to it.
+#
+# Needs, per GitHub environment (`uat`, `prod`), these variables:
 #   GCP_PROJECT_ID   the environment's project
 #   GCP_REGION       e.g. us-central1
 #   GKE_CLUSTER      cluster name (terraform output `cluster`)
@@ -9,10 +13,15 @@
 #                    writer + GKE developer + Secret Manager accessor on the
 #                    consumer token secrets (for the smoke test)
 # and on `prod` only:
-#   STAGING_IMAGE_REPOSITORY  the staging repository path to promote from
+#   UAT_IMAGE_REPOSITORY  the UAT repository path to promote from
 #                    (prod's deploy SA needs Artifact Registry reader there)
 # and `prod` set to require a reviewer, so promotion is a human decision.
-# docs/03-deployment.md sets these up. No keys are stored in GitHub.
+# One repository secret:
+#   INFRA_REPO_TOKEN read access to bookbee/air-infrastructure-service (a
+#                    fine-grained token or a GitHub App token), if that
+#                    repository is private
+# air-infrastructure-service's docs/03-gke-runbook.md sets these up. No cloud
+# keys are stored in GitHub.
 name: Deploy
 
 on:
@@ -29,15 +38,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  staging:
+  uat:
     runs-on: ubuntu-latest
-    environment: staging
+    environment: uat
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     env:
       REPOSITORY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/air/air-model-gateway
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: air-model-gateway
+      - uses: actions/checkout@v4
+        with:
+          repository: bookbee/air-infrastructure-service
+          path: air-infrastructure-service
+          token: ${{ secrets.INFRA_REPO_TOKEN || github.token }}
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
@@ -48,7 +64,7 @@ jobs:
       - id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: air-model-gateway
           push: true
           tags: ${{ env.REPOSITORY }}:${{ github.sha }}
           build-args: REVISION=${{ github.sha }}
@@ -60,37 +76,46 @@ jobs:
         with:
           version: v4.3.1
       - name: Deploy
+        working-directory: air-model-gateway
         run: |
-          make gke-deploy GKE_ENV=staging KUBE_CONTEXT="$(kubectl config current-context)" \
+          make deploy DEPLOY_ENV=uat KUBE_CONTEXT="$(kubectl config current-context)" \
             GCP_PROJECT=${{ vars.GCP_PROJECT_ID }} IMAGE_REPOSITORY=$REPOSITORY \
             IMAGE_DIGEST=${{ steps.build.outputs.digest }}
       - name: Smoke test
+        working-directory: air-model-gateway
         run: |
-          make gke-smoke GKE_ENV=staging KUBE_CONTEXT="$(kubectl config current-context)" \
+          make deploy-smoke DEPLOY_ENV=uat KUBE_CONTEXT="$(kubectl config current-context)" \
             GCP_PROJECT=${{ vars.GCP_PROJECT_ID }}
 
   prod:
-    needs: staging
+    needs: uat
     runs-on: ubuntu-latest
     environment: prod
     env:
       REPOSITORY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/air/air-model-gateway
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: air-model-gateway
+      - uses: actions/checkout@v4
+        with:
+          repository: bookbee/air-infrastructure-service
+          path: air-infrastructure-service
+          token: ${{ secrets.INFRA_REPO_TOKEN || github.token }}
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
       - uses: docker/setup-buildx-action@v3
-      - name: Promote the staging digest
-        # Copies the exact manifest staging tested; the digest doesn't change.
-        # The deploy SA needs reader on the staging repository.
+      - name: Promote the UAT digest
+        # Copies the exact manifest UAT tested; the digest doesn't change.
+        # The deploy SA needs reader on the UAT repository.
         env:
-          STAGING_IMAGE: ${{ vars.STAGING_IMAGE_REPOSITORY }}@${{ needs.staging.outputs.digest }}
+          UAT_IMAGE: ${{ vars.UAT_IMAGE_REPOSITORY }}@${{ needs.uat.outputs.digest }}
         run: |
           gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
-          docker buildx imagetools create --tag "$REPOSITORY:${{ github.sha }}" "$STAGING_IMAGE"
+          docker buildx imagetools create --tag "$REPOSITORY:${{ github.sha }}" "$UAT_IMAGE"
       - uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ vars.GKE_CLUSTER }}
@@ -99,11 +124,13 @@ jobs:
         with:
           version: v4.3.1
       - name: Deploy
+        working-directory: air-model-gateway
         run: |
-          make gke-deploy GKE_ENV=prod KUBE_CONTEXT="$(kubectl config current-context)" \
+          make deploy DEPLOY_ENV=prod KUBE_CONTEXT="$(kubectl config current-context)" \
             GCP_PROJECT=${{ vars.GCP_PROJECT_ID }} IMAGE_REPOSITORY=$REPOSITORY \
-            IMAGE_DIGEST=${{ needs.staging.outputs.digest }}
+            IMAGE_DIGEST=${{ needs.uat.outputs.digest }}
       - name: Smoke test
+        working-directory: air-model-gateway
         run: |
-          make gke-smoke GKE_ENV=prod KUBE_CONTEXT="$(kubectl config current-context)" \
+          make deploy-smoke DEPLOY_ENV=prod KUBE_CONTEXT="$(kubectl config current-context)" \
             GCP_PROJECT=${{ vars.GCP_PROJECT_ID }}

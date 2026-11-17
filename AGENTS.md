@@ -22,8 +22,9 @@ environment.** Redis is optional and owned by the gateway's deployment; locally
 ## Definition of done
 
 **`make verify` passes** (lint, mypy strict, tests with a 90% coverage floor, OpenAPI
-drift, lock freshness, dependency audit, shellcheck, hadolint, chart and Terraform
-validation). It is exactly what CI runs. For changes that touch runtime behaviour,
+drift, lock freshness, dependency audit, shellcheck, hadolint). It is exactly what this
+repository's CI runs. The chart and Terraform live in air-infrastructure-service and are
+validated there; `make deploy-validate` runs that check from here. For changes that touch runtime behaviour,
 deployment or a consumer-visible contract, also run the runtime gates:
 `make kind-up kind-test` and `make integration-up integration-test`. `docs/05-handover.md` §2
 lists what each gate proves; §2a is the release and handover gate (one frozen commit,
@@ -42,8 +43,12 @@ then the console's contract scenarios, then the bug index).
   pricing and policy files) plus `local/`, laptop harnesses that are never deployed.
 - `make integration-up` / `integration-test`: two replicas behind nginx on `:9083` with
   the staging config, for consumers on the laptop; generated tokens (gitignored).
-- `make kind-up` / `kind-test`: the Helm chart with production values on a local kind cluster.
-- `make gke-render|gke-deploy|gke-smoke`: GKE, see `docs/03-deployment.md`.
+- `make image` / `image-push`, `make deploy-render|deploy|deploy-smoke` (`DEPLOY_ENV=uat|prod`):
+  the image is built here; the chart, Terraform and deploy scripts live in the sibling
+  air-infrastructure-service repository (`gke/`), and these targets call into it. See
+  `docs/03-deployment.md`.
+- `make kind-up` / `kind-test`: the Helm chart with production values on a local kind cluster
+  (also run from air-infrastructure-service).
 - `make openapi`: regenerate `docs/openapi.json` after any wire change.
 - `make design`: redraw `docs/design/diagrams/*.svg` and reprint
   `docs/air-model-gateway-design.pdf` (needs Chrome) after changing `docs/design/`.
@@ -120,9 +125,10 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
   service that can reach a paid model needs `daily_budget_usd` or the gateway won't
   start), the `CONSUMERS`
   table in `tests/test_gateway_config.py`, `deploy/local/integration/make-secrets.sh`
-  and `smoke.sh`, `deploy/gke/bootstrap-secrets.sh`, `smoke.py`, `deploy/local/kind/up.sh`, the
-  Terraform `consumers` variable, and `networkPolicy.allowedNamespaces` in the GKE
-  values.
+  and `smoke.sh`; and in air-infrastructure-service's `gke/`:
+  `scripts/bootstrap-gateway-secrets.sh`, `scripts/smoke-gateway.sh`,
+  `scripts/smoke_gateway.py`, `kind/up-gateway.sh`, the Terraform `consumers` variable,
+  and `networkPolicy.allowedNamespaces` in the gateway's values files.
 - **Renaming a consumer:** everything above, and its local dev token in `.env.example`
   if that is renamed too. The consumer sends the old token until its own config
   changes, so land both together or keep the old token value mapped to the new name:
@@ -140,10 +146,11 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
   the pipeline): update `docs/design/diagrams.py` or `design.html`, then `make design`.
   A test fails when the committed SVGs differ from what `diagrams.py` draws.
 - **Dependency:** `pyproject.toml`, `make lock`, `make verify`.
-- **Chart, values or Terraform:** `make gke-validate`, then `make kind-up kind-test`.
+- **Chart, values or Terraform** (in air-infrastructure-service `gke/`): `make deploy-validate`,
+  then `make kind-up kind-test`.
   After changing a Terraform provider version, re-lock for every platform:
   `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64 -platform=darwin_amd64`
-  in each `deploy/terraform/environments/<env>`.
+  in each `gke/terraform/environments/<env>` of air-infrastructure-service.
 
 ## Conventions
 
@@ -169,6 +176,6 @@ Request path: `api/middleware.py` (bounded request id, metrics, last-resort 500)
 ## Docs
 
 `docs/overview.md` (team guide) · `00-plan.md` (scope, decisions) · `01-hld.md` ·
-`02-lld.md` · `03-deployment.md` (GKE runbook) · `04-integration.md` (consumers) ·
+`02-lld.md` · `03-deployment.md` (deployment and operations) · `04-integration.md` (consumers) ·
 `05-handover.md` (assurance, open items) · `openapi.json` (the contract). The plan,
 HLD and LLD win when they disagree with the overview.

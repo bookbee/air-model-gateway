@@ -49,11 +49,11 @@ gate in §2a, run on one frozen commit. "The last review found nothing" doesn't 
 | Lock | `make lock-check` | `uv.lock` and its exports match `pyproject.toml` | CI, laptop |
 | Supply chain | `make audit` | No known vulnerabilities in the locked runtime set | CI, laptop |
 | Scripts, image | `make lint-scripts` | shellcheck and hadolint clean | CI, laptop |
-| Deployment config | `make gke-validate` | Chart lints; staging/prod/kind manifests pass schemas; Terraform validates | CI, laptop |
+| Deployment config | `make deploy-validate` (runs in air-infrastructure-service) | Chart lints; staging/prod/kind manifests pass schemas; Terraform validates | CI, laptop |
 | **All static gates** | **`make verify`** | All of the above, in one command | CI, laptop |
 | Production chart | `make kind-up kind-test` | Production values on Kubernetes: TLS Redis, prod policy, NetworkPolicy, grants, model-choice rules | Laptop |
 | Integration | `make integration-up integration-test` | Two replicas, shared Redis, real providers, and running consumers end to end | Laptop |
-| Deployed | `make gke-smoke` | The same checks inside GKE, after each deploy | CI (Deploy workflow) |
+| Deployed | `make deploy-smoke` | The same checks inside GKE, after each deploy | CI (Deploy workflow) |
 
 **Definition of done for any change:** `make verify` passes; if the change affects
 runtime behaviour, deployment or a consumer-visible contract, the kind and integration smoke
@@ -259,7 +259,7 @@ and that are easy to trip over:
   - zsh doesn't word-split `$VAR` in commands.
   - macOS `/bin/sh` can't parse `case` patterns inside `$(...)`.
   - Generated secrets must not end in a newline.
-- **`kind create` switches the current kubectl context;** `deploy/local/kind/up.sh`
+- **`kind create` switches the current kubectl context;** air-infrastructure-service's `gke/kind/up-gateway.sh`
   restores it.
 - **Providers disguise account failures.** Google reports an invalid key as
   `400 INVALID_ARGUMENT` (`API_KEY_INVALID`), Anthropic an empty account as a 400, and

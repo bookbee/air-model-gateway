@@ -1,188 +1,82 @@
-# AIR Model Gateway — GKE Deployment Runbook
+# AIR Model Gateway — Deployment and Operations
 
 **Companion docs:** [Overview](overview.md) · [Plan](00-plan.md) · [HLD](01-hld.md) · [LLD](02-lld.md)
 
-How air-model-gateway runs in staging and production on GCP, and everything DevOps
-needs to stand it up and operate it. Every file named here is in this repo.
+How air-model-gateway is deployed to UAT and production on GKE, what this repository
+owns in that, and how the gateway is operated once it runs.
 
-## 1. Target shape
+## 1. Where the deployment code lives
 
-```
-                 GKE cluster (Autopilot, private nodes)
- ┌──────────────────────────────────────────────────────────────────────┐
- │ ns air-classifier-service ─┐                                         │
- │ ns air-orchestrator-service├─► Service air-model-gateway (ClusterIP)  │
- │ ns air-web-console ────────┤      │  NetworkPolicy: these only       │
- │ ns air-tools ──────────────┤      ▼                                  │
- │ ns air-rag-service ────────┘                                         │
- │                    ns air-model-gateway: Deployment, 2–10 pods       │
- │                      (HPA, PDB, zone spread, non-root, RO root FS)   │
- │                      │ SECRETS_DIR ◄── Secret Manager add-on (CSI)   │
- │                      │ config      ◄── ConfigMap (routing, pricing,  │
- │                      │                 policy from deploy/)          │
- │                      ├──► ns air-model-servers: Ollama, llama.cpp/vLLM│
- │                      │    (owned separately; URLs in values)         │
- └──────────────────────┼───────────────────────────────────────────────┘
-                        ├──► Memorystore Redis (AUTH + TLS, private IP)
-                        └──► Cloud NAT ──► Anthropic, OpenAI, Gemini APIs
-```
+The Helm chart, the Terraform and the deployment scripts for every AIR core service
+are kept together in the **air-infrastructure-service** repository, under `gke/`, where
+DevOps maintains them. That repository's `docs/03-gke-runbook.md` is the step-by-step
+runbook (provisioning, secrets, first deploy, pipelines), and its
+`docs/02-gcp-deployment.md` explains what each service needs.
 
-- **In-cluster only.** No Ingress or load balancer. Consumers call
-  `http://air-model-gateway.air-model-gateway.svc.cluster.local` with their token in
-  `X-API-Key`.
-- **One project per environment** (staging, prod). Secret names are fixed, so two
-  environments can't share a project.
-- **Model servers are not part of this deployment.** The gateway calls them; it doesn't
-  host them (a non-goal in [00-plan.md](00-plan.md)). `values-<env>.yaml` holds their
-  URLs. Until they exist, the local rungs fail fast and chains fail over to cloud models.
-  The exceptions are `local-768-v1` (embeddings) and the classifier's `local` class,
-  which are local-only by design.
-
-## 2. What is where
-
-| Path | Owner action |
+| Piece | Where |
 |---|---|
-| `deploy/terraform/environments/<env>/` | `terraform apply` once per environment; re-apply on change |
-| `deploy/terraform/modules/air-model-gateway/` | Memorystore, Secret Manager secrets, Workload Identity IAM |
-| `deploy/terraform/modules/gke-platform/` | VPC, Cloud NAT, Autopilot cluster, Artifact Registry. Skip (`create_platform = false`) if the platform team already runs a cluster |
-| `deploy/gke/bootstrap-secrets.sh` | Issue consumer tokens, load provider keys, rotate tokens |
-| `deploy/gke/values-<env>.yaml` | Fill the `<placeholders>` once; edit model-server URLs and consumer namespaces |
-| `deploy/helm/air-model-gateway/` | The chart. `values.yaml` documents every knob |
-| `deploy/routing.yaml`, `pricing.yaml`, `policy/policy.<env>.yaml` | Config changes: edit, then deploy (no image build) |
-| `.github/workflows/deploy.yml` | Build, staging deploy + smoke, approved promotion to prod |
-| `make gke-validate`, `gke-render`, `gke-deploy`, `gke-smoke` | The same commands locally and in CI |
+| The gateway's Helm chart | air-infrastructure-service, `gke/helm/air-model-gateway/` |
+| Values per environment | air-infrastructure-service, `gke/values/{uat,prod,kind}/air-model-gateway.yaml` |
+| Terraform (Memorystore, secrets, tokens, Workload Identity; optional cluster) | air-infrastructure-service, `gke/terraform/` |
+| Token and provider-key bootstrap, smoke test, kind rehearsal | air-infrastructure-service, `gke/scripts/`, `gke/kind/` |
+| **The image** (`Dockerfile`) | this repository |
+| **Routing, pricing and policy** (`deploy/routing.yaml`, `deploy/pricing.yaml`, `deploy/policy/policy.<env>.yaml`) | this repository. They are the gateway's configuration; the chart receives them at deploy time, so `deploy/` here stays their single source |
+| **The build-and-promote pipeline** (`.github/workflows/deploy.yml`) | this repository |
 
-## 3. Prerequisites
+## 2. Target shape
 
-- Tools: `gcloud`, `kubectl`, `helm` (v3.14+ or v4), `terraform` ≥ 1.5, and
-  `kubeconform` for `make gke-validate`.
-- A GCS bucket for Terraform state (one bucket; each environment uses its own prefix).
-- Decide the region (default `us-central1`) and the project per environment.
-- The image registry: the platform module creates `air` in Artifact Registry (tags are
-  immutable). If the platform has its own registry, use that path instead.
+A GKE Autopilot cluster per environment. The gateway runs in its own namespace as 2 to
+10 pods behind an in-cluster Service: no Ingress or load balancer. Consumers call
+`http://air-model-gateway.air-model-gateway.svc.cluster.local` with their token in
+`X-API-Key`, and a NetworkPolicy admits only their namespaces. Secrets come from Secret
+Manager through the CSI add-on and Workload Identity; shared state is Memorystore Redis
+with AUTH and TLS; provider APIs are reached through Cloud NAT. Model servers (Ollama,
+llama.cpp, vLLM) are separate deployments: the gateway only gets their URLs.
 
-## 4. First-time setup (per environment)
+## 3. Environment names
 
-Shown for staging. Repeat with `prod`.
+Deployments are named `uat` and `prod`. **This service's own name for its
+pre-production environment is `staging`**: `AIR_MODEL_GATEWAY_ENVIRONMENT=staging`,
+`deploy/policy/policy.staging.yaml`, and `"environment": "staging"` in
+`/v1/capabilities`. A UAT deployment runs with those. The deploy commands take `uat`
+and map it for you.
 
-### 4.1 GCP resources
+## 4. Deploying from this repository
 
-```bash
-cd deploy/terraform/environments/staging
-cp terraform.tfvars.example terraform.tfvars          # project_id, region, create_platform…
-terraform init -backend-config="bucket=<state-bucket>"
-terraform plan -out plan && terraform apply plan
-terraform output                                      # cluster, image_repository, secret ids
-```
-
-This creates:
-- Memorystore (BASIC in staging, STANDARD_HA in prod) with AUTH and TLS.
-- Secret containers. Terraform fills the Redis URL and CA itself; the rest stay empty
-  until 4.2.
-- `secretAccessor` on the gateway's own secrets for the Kubernetes service account
-  `air-model-gateway/air-model-gateway`, through direct Workload Identity Federation: no
-  Google service account, no key.
-- Optionally the VPC, NAT, Autopilot cluster and registry.
-
-The Redis AUTH string ends up in Terraform state (inside the URL secret version), so
-the state bucket must be access-restricted like a secret store.
-
-### 4.2 Secrets
+The sibling checkout is needed (`INFRA_DIR`, default `../air-infrastructure-service`).
 
 ```bash
-# Provider keys you have, from your password manager; the script pipes them to gcloud on stdin.
-export AIR_MODEL_GATEWAY_PROVIDERS__ANTHROPIC_API_KEY=…   # optional
-export AIR_MODEL_GATEWAY_PROVIDERS__GEMINI_API_KEY=…      # optional
-deploy/gke/bootstrap-secrets.sh <staging-project> staging
+export IMAGE_REPOSITORY=<region>-docker.pkg.dev/<project>/air/air-model-gateway
+make image-push                       # linux/amd64, tagged with this commit
+make deploy DEPLOY_ENV=uat KUBE_CONTEXT=$(kubectl config current-context) GCP_PROJECT=<project>
+make deploy-smoke DEPLOY_ENV=uat KUBE_CONTEXT=$(kubectl config current-context) GCP_PROJECT=<project>
 ```
 
-This issues one token per consumer into `<service>-model-gateway-token`, writes the
-gateway's `token:service` map, and adds provider key versions. Re-runs keep existing
-tokens. The script prints no values.
+| Target | Does |
+|---|---|
+| `make image` / `make image-push` | Build the image locally; build for `linux/amd64` and push it |
+| `make deploy-render` | Print the manifests an environment would get (`SAMPLE=1` fills the project placeholders) |
+| `make deploy-validate` | Lint the charts, schema-check the manifests and validate Terraform, for every service |
+| `make deploy` | `helm upgrade --install` into `KUBE_CONTEXT`, with this checkout's routing, pricing and policy |
+| `make deploy-smoke` | The authenticated in-cluster smoke test and the NetworkPolicy check |
+| `make kind-up`, `make kind-test`, `make kind-down` | The production chart on a local kind cluster, with the other four services |
 
-**A secret listed in the chart with no version stops pods from starting.** If you have
-no OpenAI key, remove it from the chart's list in `values-staging.yaml`:
+`.github/workflows/deploy.yml` runs on a `v*` tag or manually: it builds once, deploys
+UAT by digest and smoke-tests it, waits for approval on the `prod` environment, copies
+the same digest into prod's registry, deploys and smoke-tests. It checks
+air-infrastructure-service out beside this repository.
 
-```yaml
-secrets:
-  gcp:
-    items:
-      AIR_MODEL_GATEWAY_PROVIDERS__OPENAI_API_KEY: null
-```
-
-### 4.3 Values
-
-In `deploy/gke/values-staging.yaml`:
-- Replace `<region>` and `<project>` with real values from `terraform output`. The chart
-  refuses to render while a placeholder remains. CI passes both anyway.
-- Set `modelServers.*` to the model servers' in-cluster URLs.
-- Check `networkPolicy.allowedNamespaces` lists the consumers' real namespaces.
-
-### 4.4 Consumers
-
-For each consumer:
-1. Its namespace is in `networkPolicy.allowedNamespaces`, or labelled
-   `air-platform/model-gateway-client=true`.
-2. Its identity can read its own token secret. Do this in the consumer's Terraform, or:
-   ```bash
-   gcloud secrets add-iam-policy-binding air-rag-service-model-gateway-token --project <p> \
-     --role roles/secretmanager.secretAccessor \
-     --member "principal://iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/<p>.svc.id.goog/subject/ns/air-rag-service/sa/<ksa>"
-   ```
-3. Its deployment sets the gateway URL and mounts that token, under its own setting
-   names (each repo's `.env.example` names them).
-
-### 4.5 First deploy
-
-```bash
-gcloud container clusters get-credentials <cluster> --region <region> --project <p>
-make gke-deploy GKE_ENV=staging KUBE_CONTEXT=$(kubectl config current-context) \
-  GCP_PROJECT=<p> IMAGE_REPOSITORY=<region>-docker.pkg.dev/<p>/air/air-model-gateway IMAGE_TAG=<tag>
-helm test air-model-gateway -n air-model-gateway --kube-context <ctx>
-make gke-smoke GKE_ENV=staging KUBE_CONTEXT=<ctx> GCP_PROJECT=<p>
-```
-
-The smoke test runs in a temporary namespace labelled as a consumer. It checks:
-- readiness and Redis;
-- 401 for a dev token, and 200/403 for each consumer per its grants;
-- the environment name;
-- that a pod in an unlisted namespace can't connect.
-
-It deletes its namespaces afterwards.
-
-### 4.6 CI/CD
-
-`.github/workflows/deploy.yml` runs on a `v*` tag or manually:
-1. Build the image and push it to staging's registry, tagged by commit.
-2. Deploy staging by digest and run the smoke test.
-3. Wait for approval on the `prod` environment.
-4. Copy the same digest into prod's registry, deploy it, and run the smoke test.
-
-Set up once:
-- A Workload Identity Federation pool and provider trusting this GitHub repo.
-- A deploy service account per environment with:
-  - `roles/artifactregistry.writer`;
-  - `roles/container.developer`;
-  - `roles/secretmanager.secretAccessor` on the five `*-model-gateway-token` secrets
-    (for the smoke test);
-  - on prod's account only, `roles/artifactregistry.reader` on staging's repository.
-- GitHub environments `staging` and `prod` with variables `GCP_PROJECT_ID`,
-  `GCP_REGION`, `GKE_CLUSTER`, `GCP_WIF_PROVIDER` and `GCP_DEPLOY_SA`. Prod also needs
-  `STAGING_IMAGE_REPOSITORY`, and a required reviewer.
-- With private control planes, the GitHub runners must be allowed through
-  `master_authorized_networks`, or use self-hosted runners inside the VPC.
-
-`.github/workflows/ci.yml` runs `make check`, `make gke-validate` and an image build on
-every push and pull request.
+First-time setup of an environment (Terraform, secrets, values, consumers) is in
+air-infrastructure-service's runbook, §5.
 
 ## 5. Day-2 operations
 
 | Task | How |
 |---|---|
-| Change routing, pricing or a grant | Edit the file in `deploy/`, merge, run the Deploy workflow (or `make gke-deploy` with the current image). The ConfigMap checksum rolls the pods. |
+| Change routing, pricing or a grant | Edit the file in `deploy/`, merge, run the Deploy workflow (or `make deploy` with the current image). The ConfigMap checksum rolls the pods. |
 | Set provider quotas, a service's daily budget or its model-choice grants | Edit `provider_quotas`, `daily_budget_usd`, `model_classes`, `embed_models`, `preferred_providers` or `pin` in `deploy/policy/policy.<env>.yaml` (commented examples inside), then deploy as for routing. Watch `provider_quota_rejected_total` and `budget_rejected_total`. |
 | Rotate a provider key | Add a version (`printf %s "$KEY" \| gcloud secrets versions add air-model-gateway-gemini-api-key --data-file=-`), then `kubectl -n air-model-gateway rollout restart deploy/air-model-gateway`. Secrets are read at boot. |
-| Rotate consumer tokens, no downtime | `bootstrap-secrets.sh <p> <env> --rotate` (the gateway accepts old and new), restart the gateway, restart each consumer, then `--retire-old` and restart the gateway. |
+| Rotate consumer tokens, no downtime | air-infrastructure-service's `gke/scripts/bootstrap-gateway-secrets.sh <p> <env> --rotate` (the gateway accepts old and new), restart the gateway, restart each consumer, then `--retire-old` and restart the gateway. |
 | Roll back | `helm rollback air-model-gateway -n air-model-gateway` (config and image together). |
 | Long streams and rollouts | A rollout drains each pod for `gracefulShutdownSeconds` (70 s). A stream still running after that is cut off and its caller must retry. If consumers stream long answers, raise `gracefulShutdownSeconds` and `terminationGracePeriodSeconds` together. The Service is in-cluster with no proxy, so nothing buffers streams; any proxy added later must not buffer `text/event-stream` (the gateway sends `X-Accel-Buffering: no`). |
 | Scale | HPA on CPU, 3–10 replicas in prod. The gateway mostly waits on providers, so move to a request-rate metric once there is a baseline. |
@@ -238,7 +132,7 @@ Managed Prometheus scrapes `/metrics` (`PodMonitoring`). Every metric is listed 
 - **Redis:** AUTH plus TLS, verified against Memorystore's CA. Hostname checking is off
   because the client dials an IP.
 - **Supply chain:** tags are immutable, deploys are by digest, and prod runs exactly
-  what staging tested.
+  what UAT tested.
 - **In-cluster traffic is plain HTTP.** If your policy requires encryption between pods,
   enable GKE inter-node transparent encryption or a service mesh. The gateway needs no
   change for either.
@@ -248,8 +142,9 @@ Managed Prometheus scrapes `/metrics` (`PodMonitoring`). Every metric is listed 
 
 ## 7. What has been verified, and what hasn't
 
-Verified on a laptop (`make gke-validate`, `make kind-up`, `make kind-test`):
-- **Chart:** lints, and staging, prod and kind manifests pass Kubernetes 1.33 and CRD
+Verified on a laptop (`make deploy-validate`, `make kind-up`, `make kind-test`), most recently
+on 2026-11-17 from the chart's new home in air-infrastructure-service:
+- **Chart:** lints, and UAT, prod and kind manifests pass Kubernetes 1.33 and CRD
   schema validation (`SecretProviderClass`, `PodMonitoring`).
 - **Terraform:** both roots pass `fmt` and `validate` against google provider 7.x.
 - **On kind, with production values:**
@@ -259,8 +154,9 @@ Verified on a laptop (`make gke-validate`, `make kind-up`, `make kind-test`):
   - Redis over TLS with AUTH and CA verification;
   - all smoke checks pass, and the NetworkPolicy blocks an unlisted namespace;
   - a rolling restart under continuous traffic dropped 0 of 1,331 requests.
-- **`bootstrap-secrets.sh`:** first run, re-run, `--rotate` and `--retire-old`, against
-  a stand-in for `gcloud`.
+- **The bootstrap script:** first run, re-run, `--rotate` and `--retire-old`, against
+  a stand-in for `gcloud` (before the move; it has since changed only in the environment
+  names it accepts).
 
 Not verifiable without a GCP project:
 - `terraform apply`;
@@ -270,5 +166,5 @@ Not verifiable without a GCP project:
 - Autopilot admission of the pod spec;
 - the Deploy workflow's Workload Identity Federation.
 
-The first staging rollout is where these get proven; §4 is written to make that a
-single pass.
+The first UAT rollout is where these get proven; air-infrastructure-service's runbook
+is written to make that a single pass.

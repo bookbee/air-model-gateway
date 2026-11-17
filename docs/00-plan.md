@@ -88,7 +88,8 @@ consumer reaches directly, in every environment.
 
 In rough priority order:
 
-1. Stand up staging, then prod, on GCP following [03-deployment.md](03-deployment.md).
+1. Stand up UAT, then prod, on GCP following air-infrastructure-service's
+   `docs/03-gke-runbook.md` ([03-deployment.md](03-deployment.md) says what lives where).
    Proves what a laptop can't: Terraform apply, the Secret Manager add-on, Memorystore
    TLS, Managed Prometheus and CI's Workload Identity Federation.
 2. Alerting on breaker, Redis-error, unpriced-model, rung-failure (`auth`, `adapter`), budget and quota metrics, and latency SLOs.

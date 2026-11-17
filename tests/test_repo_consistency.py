@@ -111,7 +111,7 @@ def test_the_image_build_context_is_an_allowlist() -> None:
     copies = re.findall(r"^COPY (?!--from)(.+)$", (ROOT / "Dockerfile").read_text(), re.M)
     sources = {src for line in copies for src in line.split()[:-1]}
     assert "deploy" not in sources and "." not in sources
-    assert not any(s.startswith(("deploy/local", "deploy/gke")) for s in sources)
+    assert not any(s.startswith("deploy/local") for s in sources)
 
 
 def test_every_source_file_is_in_the_overview_tree() -> None:

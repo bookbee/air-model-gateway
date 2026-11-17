@@ -7,6 +7,20 @@ model class (`local`, `auto`, `cloud`) or a published embedding model, never a m
 name; the gateway handles model selection, authentication, permissions, rate limits,
 failover, retries, circuit breaking, cost accounting, caching and observability.
 
+> **Part of the AIR platform.** The platform's entry point is the air-web-console
+> repository, checked out next to this one: `docs/platform/01-overview.md` shows how the
+> services fit together, `02-concepts.md` explains the AI terms used here (model class,
+> failover chain, embedding, tokens) and `03-local-setup.md` brings up every service
+> together. This gateway has no runtime dependency on any other AIR service.
+
+| If you are… | Start with |
+| --- | --- |
+| New to the gateway | [Capabilities](#capabilities), then [Quick start](#quick-start) |
+| Calling it from another service | [`docs/04-integration.md`](docs/04-integration.md) and [`docs/openapi.json`](docs/openapi.json) |
+| Deploying or operating it | [Production (GKE)](#production-gke), then [`docs/03-deployment.md`](docs/03-deployment.md) |
+| Changing the code | [`AGENTS.md`](AGENTS.md), then [`docs/overview.md`](docs/overview.md) |
+| Picking up open work | [`docs/05-handover.md`](docs/05-handover.md) |
+
 ## Visual design
 
 **[AIR Model Gateway · Visual Design (PDF)](docs/air-model-gateway-design.pdf)**: 14
@@ -95,6 +109,11 @@ make verify               # every gate CI runs (the definition of done)
 make run                  # serve on :8083 against native Ollama (REDIS=infra to share state)
 ```
 
+The local model classes need Ollama (ollama.com) running on the host with the
+models the routing uses: `make ollama-pull` fetches them. The cloud classes need at least
+one provider key in `.env` (Gemini is first in every cloud chain); without one, `cloud`
+calls fail and `auto` falls back to the local model.
+
 ```bash
 curl -X POST localhost:8083/v1/generate \
   -H "X-API-Key: air-classifier-dev" -H "Content-Type: application/json" \
@@ -107,13 +126,23 @@ staging-configured stack on `:9083` for integration testing with other AIR servi
 
 ## Production (GKE)
 
-Staging and production run on GKE from one Helm chart (`deploy/helm/`), with GCP
-resources in Terraform (`deploy/terraform/`). Those resources are Memorystore, Secret
-Manager and Workload Identity, plus an optional Autopilot cluster. A GitHub Actions
-workflow builds once and promotes the same image digest from staging to prod. On a
-laptop, `make gke-validate` checks the chart and Terraform, and `make kind-up` /
-`make kind-test` run the production chart on a local kind cluster.
-[`docs/03-deployment.md`](docs/03-deployment.md) is the runbook.
+UAT and production run on GKE. This repository owns the image and the gateway's
+routing, pricing and policy files; **the Helm chart, the Terraform and the deployment
+scripts live in the air-infrastructure-service repository** (`gke/`), where DevOps
+keeps them for every AIR core service. With that repository checked out next to this
+one:
+
+```bash
+make image-push IMAGE_REPOSITORY=<region>-docker.pkg.dev/<project>/air/air-model-gateway
+make deploy DEPLOY_ENV=uat KUBE_CONTEXT=<context> GCP_PROJECT=<project> IMAGE_REPOSITORY=…
+make deploy-smoke DEPLOY_ENV=uat KUBE_CONTEXT=<context> GCP_PROJECT=<project>
+```
+
+A GitHub Actions workflow builds once and promotes the same image digest from UAT to
+prod. On a laptop, `make deploy-validate` checks the charts and Terraform, and
+`make kind-up` / `make kind-test` run the production chart on a local kind cluster.
+[`docs/03-deployment.md`](docs/03-deployment.md) says what lives where and how the
+gateway is operated.
 
 ## Configuration
 
@@ -129,8 +158,8 @@ cloud secret-store drivers deliver them. Routing, pricing and permissions live i
 |---|---|
 | `src/air_model_gateway/` | The service: API, control plane, router, providers, cache, metrics |
 | `src/air_model_gateway_client/` | Reference Python client (separate import package, same wheel) |
-| `deploy/` | Routing, pricing and policy files; what gets deployed (`helm/`, `gke/`, `terraform/`); laptop-only harnesses (`local/`) |
-| `.github/workflows/` | CI (`make verify`'s gates) and the staging → prod deploy |
+| `deploy/` | Routing, pricing and policy files; a laptop-only integration harness (`local/`). The chart and Terraform are in air-infrastructure-service |
+| `.github/workflows/` | CI (`make verify`'s gates) and the UAT → prod deploy |
 | `tests/` | Unit and in-process end-to-end tests |
 | `docs/` | Overview, scope, design, deployment, integration, handover; the OpenAPI contract |
 | `AGENTS.md` | Rules for changing the code, for engineers and any coding agent |
@@ -144,8 +173,8 @@ cloud secret-store drivers deliver them. Routing, pricing and permissions live i
 - [`docs/00-plan.md`](docs/00-plan.md): scope, goals, non-goals and key decisions.
 - [`docs/01-hld.md`](docs/01-hld.md): high-level design and failure behaviour.
 - [`docs/02-lld.md`](docs/02-lld.md): settings, contracts and module internals.
-- [`docs/03-deployment.md`](docs/03-deployment.md): GKE runbook: provisioning,
-  deploying, rotating secrets, operating.
+- [`docs/03-deployment.md`](docs/03-deployment.md): where the deployment code lives,
+  deploying from this repository, and operating the gateway (logs, alerts, security).
 - [`docs/04-integration.md`](docs/04-integration.md): for consuming teams: access,
   calls, errors and retries, timeouts, testing.
 - [`docs/05-handover.md`](docs/05-handover.md): how the project is verified, the
@@ -153,5 +182,9 @@ cloud secret-store drivers deliver them. Routing, pricing and permissions live i
   [`AGENTS.md`](AGENTS.md).
 - [`docs/06-consumer-migration.md`](docs/06-consumer-migration.md): per-service steps
   to move to `/v1/generate` and `/v1/embed`, and to adopt streaming.
+- [`docs/07-ai-firewall.md`](docs/07-ai-firewall.md): **proposal, not implemented.** An
+  AI firewall (content screening) in the gateway, for the owner's review.
+- [`docs/08-observability.md`](docs/08-observability.md): **proposal, not implemented.**
+  Production observability beyond today's metrics and audit line.
 - [`docs/openapi.json`](docs/openapi.json): the API contract (OpenAPI 3.1); generate
   clients from it. Served live at `/docs` on a running gateway.

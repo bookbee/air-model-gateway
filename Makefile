@@ -186,8 +186,9 @@ llamacpp-down: ## Stop llama-server
 	@pkill -f "llama-server.*--port $(LLAMACPP_PORT)" && echo "stopped" || echo "not running"
 
 # ---- local integration stack (laptop harness, never deployed) --------------
-# deploy/local/ holds test harnesses only; what gets deployed is deploy/helm,
-# deploy/gke and deploy/terraform. This stack is the production image with the
+# deploy/local/ holds a test harness only; the Helm chart and Terraform that
+# deploy this service live in air-infrastructure-service (gke/). This stack is
+# the production image with the
 # staging configuration: ENVIRONMENT=staging (fail-closed policy),
 # deploy/policy/policy.staging.yaml, generated tokens and provider keys as
 # SECRETS_DIR files, Redis, JSON logs, two replicas behind nginx on :9083. It
@@ -231,89 +232,83 @@ integration-ps: ## Show integration stack status
 integration-logs: ## Tail integration-stack gateway logs (JSON)
 	$(INTEGRATION) logs -f gateway
 
-# ---- production on GKE (Helm + Terraform) ----------------------------------
-# deploy/helm/air-model-gateway is the chart; deploy/gke holds one values file
-# per environment and the scripts; deploy/terraform the GCP resources.
-# docs/03-deployment.md is the runbook. Routing, pricing and the environment's
-# policy are passed from deploy/ with --set-file, so they have one source.
+# ---- image and deployment (UAT and production) ------------------------------
+# This repository owns its image and the gateway's own configuration
+# (deploy/routing.yaml, deploy/pricing.yaml, deploy/policy/). The Helm chart,
+# the Terraform and the deployment scripts live in air-infrastructure-service
+# (gke/), where DevOps keeps them for all five core services. The targets below
+# build and push the image here, then hand over to that repository, checked out
+# next to this one (INFRA_DIR). Its docs/03-gke-runbook.md is the runbook.
 #
-#   GKE_ENV       staging | prod
-#   KUBE_CONTEXT  required by gke-deploy / gke-smoke; never defaulted, so a
+#   DEPLOY_ENV    uat | prod. UAT runs with AIR_MODEL_GATEWAY_ENVIRONMENT=staging
+#                 and deploy/policy/policy.staging.yaml: `staging` is this
+#                 service's own name for its pre-production environment.
+#   IMAGE_REPOSITORY  <region>-docker.pkg.dev/<project>/air/air-model-gateway
+#   IMAGE_TAG     defaults to this checkout's short commit
+#   IMAGE_DIGEST  what CI deploys: a digest can't be re-pointed after review
+#   KUBE_CONTEXT  required by deploy / deploy-smoke; never defaulted, so a
 #                 deploy can't land on whatever cluster happens to be current
-#   IMAGE_REPOSITORY / IMAGE_TAG / IMAGE_DIGEST   the build to deploy (CI
-#                 passes the digest); the repository defaults to the values file
 #   GCP_PROJECT   the environment's project: Secret Manager for the chart, and
-#                 where gke-smoke reads the consumer tokens
-GKE_ENV ?= staging
-CHART   := deploy/helm/air-model-gateway
-KIND_CONTEXT := kind-air-model-gateway
-KUBECONFORM := kubeconform -strict -summary -kubernetes-version 1.33.0 \
-	-schema-location default \
-	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+#                 where deploy-smoke reads the consumer tokens
+DEPLOY_ENV ?= uat
+INFRA_DIR ?= ../air-infrastructure-service
+SERVICE   := air-model-gateway
+IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo dev)
+INFRA_MAKE = $(MAKE) --no-print-directory -C $(INFRA_DIR) SERVICE=$(SERVICE) DEPLOY_ENV=$(DEPLOY_ENV) \
+	GATEWAY_DIR="$(CURDIR)" KUBE_CONTEXT="$(KUBE_CONTEXT)" GCP_PROJECT="$(GCP_PROJECT)" \
+	IMAGE_REPOSITORY="$(IMAGE_REPOSITORY)" IMAGE_DIGEST="$(IMAGE_DIGEST)" \
+	IMAGE_TAG="$(if $(IMAGE_DIGEST),,$(IMAGE_TAG))"
 
-# Stand-ins for the per-project placeholders, so validation can render.
-GKE_SAMPLE := --set image.repository=us-central1-docker.pkg.dev/sample/air/air-model-gateway \
-	--set secrets.gcp.project=sample
-
-ifneq ($(filter $(GKE_ENV),staging prod),$(GKE_ENV))
-$(error GKE_ENV must be `staging` or `prod`, got `$(GKE_ENV)`)
+ifneq ($(filter $(DEPLOY_ENV),uat prod),$(DEPLOY_ENV))
+$(error DEPLOY_ENV must be `uat` or `prod`, got `$(DEPLOY_ENV)`)
 endif
 
-HELM_CONFIG = --set-file config.routing=deploy/routing.yaml \
-	--set-file config.pricing=deploy/pricing.yaml \
-	--set-file config.policy=deploy/policy/policy.$(1).yaml
-HELM_IMAGE = $(if $(IMAGE_REPOSITORY),--set image.repository=$(IMAGE_REPOSITORY)) \
-	$(if $(IMAGE_TAG),--set image.tag=$(IMAGE_TAG)) \
-	$(if $(IMAGE_DIGEST),--set image.digest=$(IMAGE_DIGEST)) \
-	$(if $(GCP_PROJECT),--set secrets.gcp.project=$(GCP_PROJECT))
+.PHONY: require-infra-repo
+require-infra:
+	@test -f $(INFRA_DIR)/gke/scripts/release.sh || { \
+		echo "air-infrastructure-service is not at $(INFRA_DIR): the charts and deploy scripts live there."; \
+		echo "Check it out next to this repository, or pass INFRA_DIR=<path>."; exit 1; }
 
-.PHONY: gke-render
-gke-render: ## Render the GKE manifests for GKE_ENV to stdout
-	@helm template air-model-gateway $(CHART) -n air-model-gateway \
-		-f deploy/gke/values-$(GKE_ENV).yaml $(call HELM_CONFIG,$(GKE_ENV)) $(HELM_IMAGE)
+.PHONY: require-image-repository
+require-image-repository:
+	@test -n "$(IMAGE_REPOSITORY)" || { echo "set IMAGE_REPOSITORY, e.g. <region>-docker.pkg.dev/<project>/air/$(SERVICE)"; exit 1; }
 
-.PHONY: gke-validate
-gke-validate: ## Lint the chart, schema-check every environment, validate Terraform
-	helm lint $(CHART) -f deploy/gke/values-prod.yaml $(call HELM_CONFIG,prod) $(GKE_SAMPLE)
-	@for env in staging prod; do \
-		echo "manifests: $$env"; \
-		helm template air-model-gateway $(CHART) -n air-model-gateway \
-			-f deploy/gke/values-$$env.yaml $(call HELM_CONFIG,$$env) $(GKE_SAMPLE) | $(KUBECONFORM) - || exit 1; \
-	done
-	@echo "manifests: kind"
-	@helm template air-model-gateway $(CHART) -n air-model-gateway \
-		-f deploy/local/kind/values-kind.yaml $(call HELM_CONFIG,prod) | $(KUBECONFORM) -
-	terraform -chdir=deploy/terraform fmt -recursive -check
-	@for env in staging prod; do \
-		echo "terraform: $$env"; \
-		terraform -chdir=deploy/terraform/environments/$$env init -backend=false -input=false >/dev/null && \
-		terraform -chdir=deploy/terraform/environments/$$env validate -no-color || exit 1; \
-	done
+.PHONY: image
+image: ## Build the image locally as $(SERVICE):$(IMAGE_TAG)
+	docker build --build-arg REVISION=$(REVISION) -t $(SERVICE):$(IMAGE_TAG) .
 
-.PHONY: gke-deploy
-gke-deploy: ## helm upgrade --install GKE_ENV into KUBE_CONTEXT
-	@test -n "$(KUBE_CONTEXT)" || { echo "set KUBE_CONTEXT (see docs/03-deployment.md)"; exit 1; }
-	helm --kube-context $(KUBE_CONTEXT) upgrade --install air-model-gateway $(CHART) \
-		-n air-model-gateway --create-namespace \
-		-f deploy/gke/values-$(GKE_ENV).yaml $(call HELM_CONFIG,$(GKE_ENV)) $(HELM_IMAGE) \
-		--wait --timeout 10m
+.PHONY: image-push
+image-push: require-image-repository ## Build for linux/amd64 and push IMAGE_REPOSITORY:IMAGE_TAG (gcloud auth configure-docker first)
+	docker build --platform linux/amd64 --build-arg REVISION=$(REVISION) -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) .
+	docker push $(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
-.PHONY: gke-smoke
-gke-smoke: ## Smoke-test GKE_ENV in KUBE_CONTEXT (tokens from GCP_PROJECT)
-	@test -n "$(KUBE_CONTEXT)" -a -n "$(GCP_PROJECT)" || { echo "set KUBE_CONTEXT and GCP_PROJECT"; exit 1; }
-	KUBE_CONTEXT=$(KUBE_CONTEXT) GCP_PROJECT=$(GCP_PROJECT) EXPECT_ENVIRONMENT=$(GKE_ENV) deploy/gke/smoke.sh
+.PHONY: deploy-render
+deploy-render: require-infra-repo ## Print the manifests DEPLOY_ENV would get (SAMPLE=1 fills the project placeholders)
+	@$(INFRA_MAKE) SAMPLE="$(SAMPLE)" gke-render
+
+.PHONY: deploy-validate
+deploy-validate: require-infra-repo ## Lint and schema-check the charts and Terraform for every service (runs in air-infrastructure-service)
+	@$(INFRA_MAKE) gke-validate
+
+.PHONY: deploy
+deploy: require-infra-repo ## Deploy this service to DEPLOY_ENV (uat|prod) in KUBE_CONTEXT: helm upgrade --install
+	@$(INFRA_MAKE) gke-deploy
+
+.PHONY: deploy-smoke
+deploy-smoke: require-infra-repo ## Smoke-test this service in DEPLOY_ENV: tokens from GCP_PROJECT
+	@$(INFRA_MAKE) gke-smoke
 
 .PHONY: kind-up
-kind-up: ## Production chart on a local kind cluster (TLS Redis, prod policy)
-	@deploy/local/kind/up.sh
+kind-up: require-infra-repo ## The production charts on a local kind cluster: this service and the other four
+	@$(INFRA_MAKE) kind-up
 
 .PHONY: kind-test
-kind-test: ## Smoke-test the kind deployment (+ NetworkPolicy)
-	@KUBE_CONTEXT=$(KIND_CONTEXT) TOKENS_FILE=deploy/local/kind/.state/tokens.env deploy/gke/smoke.sh
+kind-test: require-infra-repo ## Smoke-test the kind deployment (+ NetworkPolicy)
+	@$(INFRA_MAKE) kind-test
 
 .PHONY: kind-down
-kind-down: ## Delete the kind cluster (keeps deploy/local/kind/.state)
-	kind delete cluster --name air-model-gateway
+kind-down: require-infra-repo ## Delete the kind cluster
+	@$(INFRA_MAKE) kind-down
 
 # ---- dev inner loop --------------------------------------------------------
 $(PY):
@@ -408,7 +403,7 @@ check: lint typecheck test ## Lint + typecheck + test
 # are the runtime gates on top. docs/05-handover.md explains each.
 .PHONY: lint-scripts
 lint-scripts: ## shellcheck every script, hadolint the Dockerfile
-	shellcheck -S warning deploy/local/integration/*.sh deploy/local/kind/*.sh deploy/gke/*.sh
+	shellcheck -S warning deploy/local/integration/*.sh
 	docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
 
 .PHONY: audit
@@ -416,7 +411,7 @@ audit: ## Known-vulnerability scan of the locked runtime dependencies
 	uvx pip-audit@2.7.3 --require-hashes --disable-pip -r requirements.lock
 
 .PHONY: verify
-verify: check lock-check lint-scripts audit gke-validate ## Every static gate (what CI runs)
+verify: check lock-check lint-scripts audit ## Every static gate this repository's CI runs (charts: make deploy-validate)
 	@echo "verify: all gates passed"
 
 .PHONY: clean

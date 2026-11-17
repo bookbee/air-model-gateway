@@ -1121,7 +1121,7 @@ def governance() -> str:
 def gke() -> str:
     b: list[str] = []
     b.append(
-        group(15, 15, 1130, 660, "GCP project  (one per environment: staging, prod)", kind="infra")
+        group(15, 15, 1130, 660, "GCP project  (one per environment: UAT, prod)", kind="infra")
     )
     b.append(group(35, 50, 800, 420, "GKE Autopilot cluster  (private nodes)", kind="infra"))
     b.append(group(55, 85, 230, 365, "Consumer namespaces", kind="consumer"))
@@ -1150,7 +1150,7 @@ def gke() -> str:
             124,
             "Deployment",
             (
-                "prod 3–10 pods (HPA) · staging 2–4",
+                "prod 3–10 pods (HPA) · UAT 2–4",
                 "PDB · spread over zones and nodes",
                 "non-root · read-only root FS",
                 "drains in-flight calls on SIGTERM",
@@ -1236,7 +1236,7 @@ def gke() -> str:
         text(
             575,
             507,
-            "Terraform (deploy/terraform) creates Memorystore, the secrets",
+            "Terraform (infra repo gke/terraform) creates Memorystore, the secrets",
             size=11.5,
             colour=MUTED,
         )
@@ -1259,7 +1259,7 @@ def gke() -> str:
         text(
             35,
             585,
-            "Helm (deploy/helm + deploy/gke/values-<env>.yaml) creates everything inside ns air-model-gateway.",
+            "Helm (infra repo gke/helm + gke/values/<env>) creates everything inside ns air-model-gateway.",
             size=11.5,
             colour=MUTED,
         )
@@ -1307,7 +1307,7 @@ def delivery() -> str:
     jobs = [
         ("check", ("make check: ruff, mypy strict, tests ≥ 90%", "lock-check · OpenAPI drift")),
         ("supply-chain", ("pip-audit · shellcheck · hadolint", "docker build")),
-        ("deploy-config", ("helm lint · kubeconform", "terraform validate (make gke-validate)")),
+        ("deploy-config", ("helm lint · kubeconform · terraform", "in the infra repo (gke-validate)")),
     ]
     for i, (name, lines) in enumerate(jobs):
         b.append(box(20 + i * 370, 40, 345, 66, name, lines, kind="core", size=13))
@@ -1315,11 +1315,11 @@ def delivery() -> str:
         text(20, 150, "Tag v* (or manual): .github/workflows/deploy.yml", size=14, weight="bold")
     )
     steps = [
-        ("Build once", ("push image to staging", "Artifact Registry"), "infra"),
-        ("Staging", ("helm upgrade (gke-deploy)", "then gke-smoke"), "core"),
+        ("Build once", ("push image to UAT", "Artifact Registry"), "infra"),
+        ("UAT", ("helm upgrade (make deploy)", "then deploy-smoke"), "core"),
         ("Approval", ("prod environment needs", "a reviewer"), "obs"),
         ("Promote", ("copy the same digest", "into prod's registry"), "infra"),
-        ("Prod", ("helm upgrade", "then gke-smoke"), "core"),
+        ("Prod", ("helm upgrade", "then deploy-smoke"), "core"),
     ]
     for i, (name, lines, kind) in enumerate(steps):
         x = 20 + i * 222
@@ -1339,22 +1339,22 @@ def delivery() -> str:
     once = [
         (
             "terraform apply",
-            ("deploy/terraform/environments/<env>", "modules: air-model-gateway, gke-platform"),
+            ("infra repo: gke/terraform/environments/<env>", "modules: gateway, air-service, gke-platform"),
             "infra",
         ),
         (
-            "bootstrap-secrets.sh",
+            "bootstrap-gateway-secrets.sh",
             ("issue consumer tokens, load provider", "keys; --rotate / --retire-old"),
             "state",
         ),
         (
-            "values-<env>.yaml",
+            "gke/values/<env>/",
             ("fill placeholders: project, model-server", "URLs, consumer namespaces"),
             "config",
         ),
         (
             "Each consumer",
-            ("mounts its token, sets the gateway URL", "(03-deployment.md §4.4)"),
+            ("mounts its token, sets the gateway URL", "(infra runbook §5)"),
             "consumer",
         ),
     ]
@@ -1423,7 +1423,7 @@ def environments() -> str:
             "make kind-test",
         ),
         (
-            "GKE staging · prod",
+            "GKE UAT · prod",
             "Deploy workflow",
             "cloud",
             [
@@ -1433,7 +1433,7 @@ def environments() -> str:
                 "in-cluster only",
                 "same image digest in both",
             ],
-            "make gke-smoke",
+            "make deploy-smoke",
         ),
     ]
     for i, (name, start, kind, lines, gate) in enumerate(cols):
